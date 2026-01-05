@@ -33,19 +33,13 @@ add_library(CDTMAP STATIC
     lib/CDTMAP/CDTcommon.cpp
     lib/CDTMAP/CDTthpp.cpp
     lib/CDTMAP/CDTsnpp.cpp
+    lib/CDTMAP/CDTencircle.cpp
+    lib/CDTMAP/CDTinformed.cpp
     lib/CDTMAP/debug.cpp
 )
 target_include_directories(CDTMAP PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(CDTMAP PUBLIC ${OpenCV_LIBS})
 
-
-# add_executable(expTCS
-# test/expTCS.cpp
-# )
-# target_link_libraries(expTCS PUBLIC 
-# ${OpenCV_LIBS}
-# CDTMAP
-# )
 
 add_executable(expKSNPP
 test/expKSNPP.cpp
@@ -55,6 +49,14 @@ ${OpenCV_LIBS}
 CDTMAP
 )
 
+
+add_executable(testEncircle
+test/testEncircle.cpp
+)
+target_link_libraries(testEncircle PUBLIC 
+${OpenCV_LIBS}
+CDTMAP
+)
 
 add_executable(testTHPP
 test/testTHPP.cpp

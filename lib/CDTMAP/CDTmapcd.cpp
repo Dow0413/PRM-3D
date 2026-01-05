@@ -131,6 +131,7 @@ void BImap::DrawBImap(bool debugmap)
 
             std::vector<std::vector<cv::Point>> contours;
             contours.push_back(PointArray);
+            cv::fillPoly(BIamap, contours, cv::Scalar(graphIndex));
             cv::fillPoly(BIimap, contours, cv::Scalar(polyIndex | 0xc000));
             if (debugmap)
                 cv::fillPoly(BIdmap, contours, cv::Scalar(32, 32, 32));

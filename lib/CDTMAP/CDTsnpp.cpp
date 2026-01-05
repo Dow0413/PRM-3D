@@ -67,14 +67,14 @@ void BImap::kSNPPlanner(kSNPPtask &task)
 
     uint32_t anum_Init = BIamap.at<uint16_t>(x_init.y, x_init.x);
     uint32_t anum_Goal = BIamap.at<uint16_t>(x_goal.y, x_goal.x);
-    if (anum_Init == 0xffff || anum_Init != anum_Goal)
+    int32_t PolyIndex_Init = BIimap.at<uint16_t>(x_init.y, x_init.x);
+    int32_t PolyIndex_Goal = BIimap.at<uint16_t>(x_goal.y, x_goal.x);
+    if ((PolyIndex_Init & 0xC000) != 0 || (PolyIndex_Goal & 0xC000) != 0)
     {
         printf("error: robot can't be here!!\r\n");
         return;
     }
 
-    int32_t PolyIndex_Init = BIimap.at<uint16_t>(x_init.y, x_init.x);
-    int32_t PolyIndex_Goal = BIimap.at<uint16_t>(x_goal.y, x_goal.x);
     task.graphIndex = anum_Init;
     task.xx_init = PolyIndex_Init;
     task.xx_goal = PolyIndex_Goal;
@@ -208,14 +208,14 @@ void BImap::kSNPPlannerPlus(kSNPPtask &task)
 
     uint32_t anum_Init = BIamap.at<uint16_t>(x_init.y, x_init.x);
     uint32_t anum_Goal = BIamap.at<uint16_t>(x_goal.y, x_goal.x);
-    if (anum_Init == 0xffff || anum_Init != anum_Goal)
+    int32_t PolyIndex_Init = BIimap.at<uint16_t>(x_init.y, x_init.x);
+    int32_t PolyIndex_Goal = BIimap.at<uint16_t>(x_goal.y, x_goal.x);
+    if ((PolyIndex_Init & 0xC000) != 0 || (PolyIndex_Goal & 0xC000) != 0)
     {
         printf("error: robot can't be here!!\r\n");
         return;
     }
 
-    int32_t PolyIndex_Init = BIimap.at<uint16_t>(x_init.y, x_init.x);
-    int32_t PolyIndex_Goal = BIimap.at<uint16_t>(x_goal.y, x_goal.x);
     task.graphIndex = anum_Init;
     task.xx_init = PolyIndex_Init;
     task.xx_goal = PolyIndex_Goal;
@@ -274,7 +274,7 @@ void BImap::kSNPPlannerPlus(kSNPPtask &task)
         int32_t PolyIndexPar = PathEncodingPar & 0x0000FFFF;
         for (int32_t PnearIndex : freepolygonList[PolygonNow].polygonlink)
         {
-            if (PnearIndex == PolyIndexPar || InvPolygons.count(PnearIndex))//
+            if (PnearIndex == PolyIndexPar || InvPolygons.count(PnearIndex)) //
                 continue;
 
             EncodingSet[PnearIndex]++;

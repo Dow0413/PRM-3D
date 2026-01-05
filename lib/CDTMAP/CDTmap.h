@@ -173,29 +173,25 @@ struct BIfreepolygon
     std::set<int32_t> cutlinelink; // cutline index set
 };
 
-// struct BIgoalpoint
-// {
-//     int32_t index;
-//     // BIpolygon polygon;
-//     BIpoint core;
-//     int32_t polygonlink; // polygon index set
-// };
-
 struct BIinvnode
 {
     int32_t polyS; // 源多边形引索，BIfreepolygon
     int32_t polyE; // 汇多边形引索，BIfreepolygon
 
-    struct Hash {
-        std::size_t operator()(const BIinvnode& node) const {
-            return std::hash<int32_t>{}(node.polyS) ^ 
+    struct Hash
+    {
+        std::size_t operator()(const BIinvnode &node) const
+        {
+            return std::hash<int32_t>{}(node.polyS) ^
                    (std::hash<int32_t>{}(node.polyE) << 1);
         }
     };
-    
+
     // 为了完整性，也可以定义Equal
-    struct Equal {
-        bool operator()(const BIinvnode& lhs, const BIinvnode& rhs) const {
+    struct Equal
+    {
+        bool operator()(const BIinvnode &lhs, const BIinvnode &rhs) const
+        {
             return lhs.polyS == rhs.polyS && lhs.polyE == rhs.polyE;
         }
     };
@@ -224,6 +220,30 @@ struct BIgraph
     std::vector<BIobspolygon> obspolygonList;
     std::vector<BIfreepolygon> freepolygonList;
     BIinvnodeMap invnode2cutlineMap;
+};
+
+class BIinformed
+{
+public:
+    void Initialize(std::vector<BIpoint> &points);
+    double informedFun(BIpoint point);
+    double informedFun(BIline line, double threshold = 3);
+    BIpolygon _polygon;
+    double _baseperimeter;
+
+private:
+    BIpoint _core;
+    std::map<double, int32_t> _polarIndex;
+    // 用于比较两个点的函数，首先按照y坐标比较，如果相同则按照x坐标比较
+    static bool comparePoint(const BIpoint &p1, const BIpoint &p2);
+    // 计算叉乘
+    static double crossProduct(const BIpoint &O, const BIpoint &A, const BIpoint &B);
+    // 计算两点之间的距离
+    static double distance(const BIpoint &p1, const BIpoint &p2);
+    // 用于比较极角的函数
+    static bool comparePolar(const BIpoint &base, const BIpoint &p1, const BIpoint &p2);
+    // Graham扫描算法计算凸包
+    static double grahamScan(std::vector<BIpoint> &points, std::vector<BIpoint> &hull);
 };
 
 struct THPPtask
@@ -255,6 +275,20 @@ struct kSNPPtask
     int32_t k = 1;
     std::vector<std::list<BIpoint>> Q_kSNP;
     std::vector<double> Q_Costs;
+};
+
+struct EncirclePtask
+{
+    BIpoint x_s;
+    BIpoint x_g;
+    int32_t graphIndex;
+    int32_t obs_goal;
+    BIinformed informed; // 知情集控制器
+    std::vector<int32_t> encodingPath;
+    std::unordered_set<int32_t> goalfreePolygons;
+    std::unordered_map<int32_t, int32_t> EncodingIndexMap;
+    std::list<BIpoint> minpath;
+    double cost;
 };
 
 #define BIdebug 1
@@ -323,6 +357,14 @@ public:
                                BIinvnodeMap &invnode2cutlineMap,
                                std::unordered_map<int32_t, int32_t> &EncodingTree,
                                std::unordered_map<int32_t, std::pair<double, int32_t>> &EPointTree);
+
+    //**********Encircle**********//
+    void EncirclePlanner(EncirclePtask &task);
+    double EncircleHeuristicCost(EncirclePtask &task, std::vector<int32_t> &PathEncoding);
+    double EncircleHeuristicCost(EncirclePtask &task,
+                                 std::map<int32_t, std::list<BIpoint>> &HistoricalSolutions,
+                                 std::unordered_map<int32_t, int32_t> &EncodingTree,
+                                 int32_t HEncoding);
 
     BImap();
     ~BImap();

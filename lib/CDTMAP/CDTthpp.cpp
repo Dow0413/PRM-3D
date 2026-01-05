@@ -3,12 +3,12 @@
 
 void BImap::THPPtaskInit(THPPtask &task, BIpoint &Origin, double tl, int8_t mod)
 {
-    uint32_t anum_O = BIamap.at<uint16_t>(Origin.y, Origin.x);
-    if (anum_O == 0xffff)
+    if ((BIimap.at<uint16_t>(Origin.y, Origin.x) & 0xC000) != 0)
     {
         printf("error: robot can't be here!!\r\n");
         return;
     }
+    uint32_t anum_O = BIamap.at<uint16_t>(Origin.y, Origin.x);
     cv::Mat &FOPmap = BIimap;
     task.Origin = Origin;
     task.graphIndex = anum_O;
@@ -221,7 +221,8 @@ double BImap::THPPoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init,
         return -1;
     }
     uint32_t anum_Goal = BIamap.at<uint16_t>(Goal.y, Goal.x);
-    if (anum_Goal == 0xffff || anum_Goal != task.graphIndex)
+
+    if (((BIimap.at<uint16_t>(Goal.y, Goal.x) & 0xC000) != 0) || anum_Goal != task.graphIndex)
     {
         printf("error: robot can't be here!!\r\n");
         return -1;
@@ -313,8 +314,8 @@ double BImap::UTHPPoptimalPlanner(THPPtask &task, BIpoint Init, BIpoint Goal, st
 {
     uint32_t anum_Init = BIamap.at<uint16_t>(Init.y, Init.x);
     uint32_t anum_Goal = BIamap.at<uint16_t>(Goal.y, Goal.x);
-    if (anum_Init == 0xffff || anum_Init != task.graphIndex ||
-        anum_Goal == 0xffff || anum_Goal != task.graphIndex)
+    if (((BIimap.at<uint16_t>(Init.y, Init.x) & 0xC000) != 0) || anum_Init != task.graphIndex ||
+        ((BIimap.at<uint16_t>(Goal.y, Goal.x) & 0xC000) != 0) || anum_Goal != task.graphIndex)
     {
         printf("error: robot can't be here!!\r\n");
         return -1;
@@ -406,7 +407,7 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
     {
         BIpoint &goal = Goals[goalIndex];
         uint32_t anum_Goal = BIamap.at<uint16_t>(goal.y, goal.x);
-        if (anum_Goal == 0xffff || anum_Goal != task.graphIndex)
+        if (((BIimap.at<uint16_t>(goal.y, goal.x) & 0xC000) != 0) || anum_Goal != task.graphIndex)
         {
             printf("error: robot can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
@@ -593,7 +594,7 @@ double BImap::TMVoptimalPlannerViolent(THPPtask &task, int32_t HomotopyPolyIndex
     {
         BIpoint &goal = Goals[goalIndex];
         uint32_t anum_Goal = BIamap.at<uint16_t>(goal.y, goal.x);
-        if (anum_Goal == 0xffff || anum_Goal != task.graphIndex)
+        if (((BIimap.at<uint16_t>(goal.y, goal.x) & 0xC000) != 0) || anum_Goal != task.graphIndex)
         {
             printf("error: robot can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
