@@ -12,3 +12,6 @@ temp/
 # 忽略系统文件
 .DS_Store
 Thumbs.db
+
+# 忽略expMap copy 备份目录
+expMap copy/

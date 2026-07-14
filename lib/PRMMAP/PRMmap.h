@@ -27,6 +27,7 @@ struct BIpoint
 {
     double x;
     double y;
+    int floor;
     bool operator==(const BIpoint &other) const
     {
         return std::abs(x - other.x) <= 1e-16 &&
@@ -167,6 +168,7 @@ struct BIobspolygon
 struct BIfreepolygon
 {
     int32_t index;
+    int32_t floor;        // 所属楼层
     BIpolygon polygon;
     BIpoint core;
     std::set<int32_t> polygonlink; // polygon index set
@@ -265,32 +267,6 @@ struct THPPtask
     std::list<BIpoint> minPath;
 };
 
-struct kSNPPtask
-{
-    BIpoint x_init;
-    BIpoint x_goal;
-    int32_t graphIndex;
-    int32_t xx_init;
-    int32_t xx_goal;
-    int32_t k = 1;
-    std::vector<std::list<BIpoint>> Q_kSNP;
-    std::vector<double> Q_Costs;
-};
-
-struct EncirclePtask
-{
-    BIpoint x_s;
-    BIpoint x_g;
-    int32_t graphIndex;
-    int32_t obs_goal;
-    BIinformed informed; // 知情集控制器
-    std::vector<int32_t> encodingPath;
-    std::unordered_set<int32_t> goalfreePolygons;
-    std::unordered_map<int32_t, int32_t> EncodingIndexMap;
-    std::list<BIpoint> minpath;
-    double cost;
-};
-
 #define BIdebug 1
 class BImap
 {
@@ -322,8 +298,8 @@ public:
     //**********THPP**********//
     void THPPtaskInit(THPPtask &task, BIpoint &origin, double tl, int8_t mod = 0);                                                  // 初始化THPP任务，mod = 0 系留配置约束，mod = 1 一般最优路径约束
     bool THPPExpandingClassValidity(THPPtask &task, int32_t HomotopyPolyIndexPar, int32_t PolyIndexSub, double threshold = 3);      // 边的有效性检测
-    void THPPgetCDTencoding(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<int32_t> &polyPath);                             // 获取CDT编码，回溯HomotopyPoly编码树
-    void THPPgetCDTencodingCutline(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<BIline> &cpath, BIpoint goal = {-1, -1}); // 获取CDT编码的对偶形式
+    void THPPgetPRMencoding(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<int32_t> &polyPath);                             // 获取PRM编码，回溯HomotopyPoly编码树
+    void THPPgetPRMencodingCutline(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<BIline> &cpath, BIpoint goal = {-1, -1}); // 获取PRM编码的对偶形式
 
     double THPPoptimalReConfig(THPPtask &task, std::vector<int32_t> &polyPathS, std::vector<int32_t> &polyPathG,
                                BIpoint Init, BIpoint Goal, std::list<BIpoint> &minPath); // 待测试
@@ -340,31 +316,6 @@ public:
     void GetAllOptConfigurations(THPPtask &task, BIpoint goal,
                                  std::map<int32_t, std::pair<std::list<BIpoint>, double>>
                                      &ConfigList);
-
-    //**********kSNPP**********//
-    int64_t test_count = 0;
-    // int64_t test_count = 0;
-    void kSNPPlanner(kSNPPtask &task);
-    void kSNPPlanner(kSNPPtask &task, BIpoint x_init, BIpoint x_goal, int32_t k, bool plusKey = true);
-    void kSNPPlannerPlus(kSNPPtask &task);
-    void ReduceBranches(int32_t graphIndex, int32_t xx_init, int32_t xx_goal, std::unordered_set<int32_t> &InvPolygons);
-    double GetLeastHomPathPlus(BIpoint &point,
-                               int32_t HomPolyIndex,
-                               int32_t &HomPointIndexPar,
-                               const int32_t InitPolyIndex,
-                               const BIpoint &x_Init,
-                               const std::vector<BIcutline> &cutlineList,
-                               BIinvnodeMap &invnode2cutlineMap,
-                               std::unordered_map<int32_t, int32_t> &EncodingTree,
-                               std::unordered_map<int32_t, std::pair<double, int32_t>> &EPointTree);
-
-    //**********Encircle**********//
-    void EncirclePlanner(EncirclePtask &task);
-    double EncircleHeuristicCost(EncirclePtask &task, std::vector<int32_t> &PathEncoding);
-    double EncircleHeuristicCost(EncirclePtask &task,
-                                 std::map<int32_t, std::list<BIpoint>> &HistoricalSolutions,
-                                 std::unordered_map<int32_t, int32_t> &EncodingTree,
-                                 int32_t HEncoding);
 
     BImap();
     ~BImap();

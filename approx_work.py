@@ -49,8 +49,13 @@ def get_approx_list(approxs, hchy):
 
 
 def get_approx(img, robotpixel):
-    binary, contour, hierarchy = cv2.findContours(
+    contours_result = cv2.findContours(
         img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # 兼容 OpenCV 3.x (返回3值) 和 4.x (返回2值)
+    if len(contours_result) == 3:
+        _, contour, hierarchy = contours_result
+    else:
+        contour, hierarchy = contours_result
     # print(len(contour))
     # print(hierarchy)
     approxs = [[]] * len(contour)

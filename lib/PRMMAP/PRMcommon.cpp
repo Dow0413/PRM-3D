@@ -1,4 +1,4 @@
-#include "CDTmap.h"
+#include "PRMmap.h"
 
 int64_t utime_ns(void)
 {
@@ -41,7 +41,7 @@ void BImap::GetLeastHomotopyPath(const std::vector<BIline> &f_path, std::list<BI
                     BIline l_ptemp2now = {nodeList[p_temp].point, x_now.point};
                     for (int32_t line_k = line_j; line_k < line_i; line_k++)
                     {
-                        test_count++;
+                        // test_count++;  // 禁用计数器
                         if (!doIntersect_rigorous(l_ptemp2now, f_path[line_k]))
                         {
                             should_break = true;

@@ -1,68 +1,38 @@
-
 cmake_minimum_required(VERSION 3.1...3.20)
-project(MyProject)
+project(PRM-MultiFloor)
 
-# 设置C++标准
-set(CMAKE_CXX_STANDARD 14)
+# 设置 C++ 标准
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# find_package(Threads REQUIRED)
-
-# find_package(Eigen3 3.1.91 QUIET) #(requires 3.1.91 or greater)
-
-# find_package(TBB QUIET)
 
 find_package(OpenCV 4.0 REQUIRED)
 message(STATUS "OpenCV is set to ${OpenCV_INCLUDE_DIRS}")
 
-include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories(
-${PROJECT_SOURCE_DIR}
-${PROJECT_SOURCE_DIR}/lib
-${PROJECT_SOURCE_DIR}/lib/CDTMAP
-${PROJECT_SOURCE_DIR}/lib/CSubdivision
-${PROJECT_SOURCE_DIR}/include
-${EIGEN3_INCLUDE_DIR}
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/lib
+    ${PROJECT_SOURCE_DIR}/lib/PRMMAP
+    ${PROJECT_SOURCE_DIR}/lib/CSubdivision
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples)
 
-
-add_library(CDTMAP STATIC
-    lib/CDTMAP/CDTmapcd.cpp
-    lib/CDTMAP/CDTcommon.cpp
-    lib/CDTMAP/CDTthpp.cpp
-    lib/CDTMAP/CDTsnpp.cpp
-    lib/CDTMAP/CDTencircle.cpp
-    lib/CDTMAP/CDTinformed.cpp
-    lib/CDTMAP/debug.cpp
+# PRM 核心库
+add_library(PRMMAP STATIC
+    lib/PRMMAP/PRMmapcd.cpp
+    lib/PRMMAP/PRMcommon.cpp
+    lib/PRMMAP/PRMthpp.cpp
+    lib/PRMMAP/PRMmultifloor.cpp
+    lib/PRMMAP/debug.cpp
 )
-target_include_directories(CDTMAP PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(CDTMAP PUBLIC ${OpenCV_LIBS})
+target_include_directories(PRMMAP PUBLIC ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(PRMMAP PUBLIC ${OpenCV_LIBS})
 
-
-add_executable(expKSNPP
-test/expKSNPP.cpp
+# 跨楼层路径规划测试程序
+add_executable(testMultiFloor
+    test/testMultiFloor.cpp
 )
-target_link_libraries(expKSNPP PUBLIC 
-${OpenCV_LIBS}
-CDTMAP
+target_link_libraries(testMultiFloor PUBLIC
+    ${OpenCV_LIBS}
+    PRMMAP
 )
-
-
-add_executable(testEncircle
-test/testEncircle.cpp
-)
-target_link_libraries(testEncircle PUBLIC 
-${OpenCV_LIBS}
-CDTMAP
-)
-
-add_executable(testTHPP
-test/testTHPP.cpp
-)
-target_link_libraries(testTHPP PUBLIC 
-${OpenCV_LIBS}
-CDTMAP
-)
-

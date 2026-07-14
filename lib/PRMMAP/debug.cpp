@@ -1,4 +1,4 @@
-#include "CDTmap.h"
+#include "PRMmap.h"
 
 void drawBIgraphObs(BIgraph &graph, cv::Mat image)
 {

@@ -1,123 +1,109 @@
 ## 📄 中文 README
 
-# CDT-TetheredPathPlanning
+# PRM-跨楼层路径规划 (PRM-MultiFloor)
 
-这是一个用于2D系留机器人快速最优路径规划的库。本项目提供了多种高效的路径规划算法，适用于单目标、多目标访问等不同场景，并支持非同伦最优配置搜索。
+这是一个基于 PRM（Probabilistic Roadmap）的跨楼层路径规划库，支持在多层建筑中进行系留/非系留机器人的最优路径规划。
 
 ## 🧩 功能模块
 
-- **CDT-TCS**（Configuration Deformation Tree - Topological Configuration Search）  
-  快速的非同伦最优配置搜索  
-  实现于：`BImap::THPPtaskInit`
-
-- **CDT-TPP**（Configuration Deformation Tree - Tethered Path Planner）  
-  系留机器人最优路径规划  
+- **PRM-TPP** (Configuration Deformation Tree - Tethered Path Planner)
+  系留机器人最优路径规划
   实现于：`BImap::THPPoptimalPlanner`
 
-- **CDT-TMV**（Configuration Deformation Tree - Tethered Multi-Visit Planner）  
-  系留机器人最优多目标访问路径规划  
-  实现于：`BImap::TMVoptimalPlanner`
-
-- **CDT-UTPP**（Configuration Deformation Tree - Untethered Path Planner）  
-  非系留机器人最优路径规划  
+- **PRM-UTPP** (Configuration Deformation Tree - Untethered Path Planner)
+  非系留机器人最优路径规划
   实现于：`BImap::UTHPPoptimalPlanner`
+
+- **PRM-MultiFloor** (跨楼层路径规划)
+  支持多层建筑的跨楼层路径规划
+  实现于：`PRMMultiFloor` 类
 
 ## ⚙️ 运行要求
 
-### Python 部分
-在运行测试程序前，请使用安装了 **OpenCV 3.4.9** 的 **Python3** 执行以下命令启动多边形拟合服务：
-```bash
-python3 approx_work.py
-```
-
 ### C++ 编译依赖
 - OpenCV 4.0 或更高版本
+- C++14 兼容编译器
+- nlohmann/json 库
 
-## 📁 示例工程说明
+## 📁 目录结构
 
-`./test/` 目录下包含7个示例程序：
+```
+PRM-3D/
+├── lib/PRMMAP/
+│   ├── PRMmap.h          # 核心头文件
+│   ├── PRMmapcd.cpp      # 地图构建
+│   ├── PRMcommon.cpp     # 通用函数
+│   ├── PRMthpp.cpp       # THPP 路径规划
+│   ├── PRMmultifloor.h   # 跨楼层头文件
+│   ├── PRMmultifloor.cpp # 跨楼层规划实现
+│   └── debug.cpp         # 调试函数
+├── test/
+│   └── testMultiFloor.cpp # 跨楼层规划测试
+├── CMakeLists.txt
+└── MULTIFLOOR_README.md   # 详细使用文档
+```
 
-- **无交互界面性能测试程序**：
-  - `expXXX.cpp`
+## 🚀 快速开始
 
-- **有交互界面测试程序**：
-  - `testXXX.cpp`
+### 1. 编译
 
-## 🚀 使用方法
+```bash
+mkdir build && cd build
+cmake ..
+make -j4
+```
 
-1. 启动 Python 多边形拟合服务：
-   ```bash
-   python3 approx_work.py
-   ```
+### 2. 运行测试
 
-2. 编译 C++ 代码并运行相应的测试程序。
+```bash
+../Examples/testMultiFloor
+```
+
+### 3. 基本用法
+
+```cpp
+#include "PRMmultifloor.h"
+
+// 创建规划器
+PRMMultiFloor planner;
+planner.initialize(2);  // 2 层楼
+
+// 加载楼层地图
+planner.loadFloorGraph(0, floor1Graph);
+planner.loadFloorGraph(1, floor2Graph);
+
+// 添加楼梯间连接
+planner.addFloorConnection(0, 1, stairs_f1, stairs_f2, FloorConnectionType::STAIRS);
+
+// 创建任务
+MultiFloorTHPPtask task;
+task.Origin = {100, 100};
+task.OriginFloor = 0;
+task.Goal = {200, 200};
+task.GoalFloor = 1;
+task.TetherLength = 50.0;
+
+// 执行规划
+double cost = planner.multiFloorPlanner(task);
+```
+
+## 📖 详细文档
+
+完整的使用说明和 API 文档请参阅 [MULTIFLOOR_README.md](MULTIFLOOR_README.md)
 
 ## 💡 注意事项
 
-- 确保所有依赖项正确安装。
-- 若需调试或扩展功能，请参考源码中的类与函数定义。
-- 更多技术细节请参阅相关论文或文档（如有）。
+- 确保所有楼层地图使用相同的坐标系统
+- 连接点（楼梯间）必须位于自由空间内
+- 系留模式下，路径总长度不能超过 TetherLength
 
----
+## 🔧 故障排除
 
-## 🌐 English README
+### 编译错误
+- 确认 OpenCV 版本 >= 4.0
+- 确认 nlohmann/json 库已正确安装
 
-# CDT-TetheredPathPlanning
-
-This is a library for fast and optimal path planning of 2D tethered robots. It includes several efficient algorithms suitable for various scenarios such as single-target, multi-target visiting, and topological configuration searching.
-
-## 🧩 Functional Modules
-
-- **CDT-TCS** (Configuration Deformation Tree - Topological Configuration Search)  
-  Fast non-homotopic optimal configuration search  
-  Implemented in: `BImap::THPPtaskInit`
-
-- **CDT-TPP** (Configuration Deformation Tree - Tethered Path Planner)  
-  Optimal path planning for tethered robots  
-  Implemented in: `BImap::THPPoptimalPlanner`
-
-- **CDT-TMV** (Configuration Deformation Tree - Tethered Multi-Visit Planner)  
-  Optimal multi-target visiting planning for tethered robots  
-  Implemented in: `BImap::TMVoptimalPlanner`
-
-- **CDT-UTPP** (Configuration Deformation Tree - Untethered Path Planner)  
-  Optimal path planning for untethered robots  
-  Implemented in: `BImap::UTHPPoptimalPlanner`
-
-## ⚙️ Requirements
-
-### Python Part
-Before running the test programs, please run the following command using **Python3** with **OpenCV 3.4.9** installed to start the polygon approximation service:
-```bash
-python3 approx_work.py
-```
-
-### C++ Build Dependencies
-- OpenCV 4.0 or higher
-
-## 📁 Example Projects
-
-The `./test/` directory contains 7 example projects:
-
-- **Performance test programs without UI**:
-  - `expXXX.cpp`
-
-- **Test programs with interactive UI**:
-  - `testXXX.cpp`
-
-## 🚀 Usage Instructions
-
-1. Start the Python polygon approximation service:
-   ```bash
-   python3 approx_work.py
-   ```
-
-2. Compile the C++ code and run the corresponding test program.
-
-## 💡 Notes
-
-- Make sure all dependencies are correctly installed.
-- For debugging or extending functionalities, refer to class and function definitions in the source code.
-- For more technical details, please refer to related papers or documentation (if available).
-
----
+### 路径规划失败
+- 检查起始点/目标点是否在自由空间内
+- 确认楼层连接是否正确添加
+- 检查系留长度是否足够

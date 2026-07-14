@@ -1,4 +1,4 @@
-#include "CDTmap.h"
+#include "PRMmap.h"
 #include <math.h>
 
 void BImap::THPPtaskInit(THPPtask &task, BIpoint &Origin, double tl, int8_t mod)
@@ -155,7 +155,7 @@ bool BImap::THPPExpandingClassValidity(THPPtask &task, int32_t HomotopyPolyIndex
     return false;
 }
 
-void BImap::THPPgetCDTencoding(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<int32_t> &polyPath)
+void BImap::THPPgetPRMencoding(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<int32_t> &polyPath)
 {
     std::map<int32_t, int32_t> &EncodingTree = task.EncodingTree;
     BIgraph &graph = BIgraphList[task.graphIndex];
@@ -181,7 +181,7 @@ void BImap::THPPgetCDTencoding(THPPtask &task, int32_t HomotopyPolyIndex, std::v
     }
 }
 
-void BImap::THPPgetCDTencodingCutline(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<BIline> &cpath, BIpoint goal)
+void BImap::THPPgetPRMencodingCutline(THPPtask &task, int32_t HomotopyPolyIndex, std::vector<BIline> &cpath, BIpoint goal)
 {
     std::map<int32_t, int32_t> &EncodingTree = task.EncodingTree;
     BIgraph &graph = BIgraphList[task.graphIndex];
@@ -235,7 +235,7 @@ double BImap::THPPoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init,
     }
 
     std::vector<int32_t> polyPathO;
-    THPPgetCDTencoding(task, HomotopyPolyIndex_Init, polyPathO);
+    THPPgetPRMencoding(task, HomotopyPolyIndex_Init, polyPathO);
     BIgraph &graph = BIgraphList[task.graphIndex];
     std::vector<BIcutline> &cutlineList = graph.cutlineList;
     BIinvnodeMap &invnode2cutlineMap = graph.invnode2cutlineMap;
@@ -247,7 +247,7 @@ double BImap::THPPoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init,
     {
         std::vector<int32_t> polyPathG;
         int32_t HomotopyPolyIndex_goal = (HomotopyID << 16) | PolyIndex_Goal;
-        THPPgetCDTencoding(task, HomotopyPolyIndex_goal, polyPathG);
+        THPPgetPRMencoding(task, HomotopyPolyIndex_goal, polyPathG);
         std::vector<BIline> cpath;
         cpath.emplace_back(task.Origin, task.Origin);
         int32_t polyPathOld = polyPathG.back();
@@ -338,12 +338,12 @@ double BImap::UTHPPoptimalPlanner(THPPtask &task, BIpoint Init, BIpoint Goal, st
     {
         std::vector<int32_t> polyPathS;
         int32_t HomotopyPolyIndex_Init = (HomotopyIDS << 16) | PolyIndex_Init;
-        THPPgetCDTencoding(task, HomotopyPolyIndex_Init, polyPathS);
+        THPPgetPRMencoding(task, HomotopyPolyIndex_Init, polyPathS);
         for (int32_t HomotopyIDG = 0; HomotopyIDG <= task.EncodingSet[PolyIndex_Goal]; HomotopyIDG++)
         {
             std::vector<int32_t> polyPathG;
             int32_t HomotopyPolyIndex_Goal = (HomotopyIDG << 16) | PolyIndex_Goal;
-            THPPgetCDTencoding(task, HomotopyPolyIndex_Goal, polyPathG);
+            THPPgetPRMencoding(task, HomotopyPolyIndex_Goal, polyPathG);
             polyPathG.insert(polyPathG.end(), polyPathS.rbegin(), polyPathS.rend());
             ReversePathClearing(polyPathG);
             std::vector<BIline> cpath;
@@ -377,9 +377,9 @@ double BImap::UTHPPoptimalPlanner(THPPtask &task, BIpoint Init, BIpoint Goal, st
 
 struct tmvNode
 {
-    int64_t par; // 0-15:HomotopyPolyIndex_Index(CDTencodingIndex)
-                 // 16-31:goalIndex 通过0-31可获取并构建完整CDTencoding
-                 // 32-47:标识（0-31对应CDTencoding在树中的重复数）
+    int64_t par; // 0-15:HomotopyPolyIndex_Index(PRMencodingIndex)
+                 // 16-31:goalIndex 通过0-31可获取并构建完整PRMencoding
+                 // 32-47:标识（0-31对应PRMencoding在树中的重复数）
     double cost;
     double cost1;
 };
@@ -395,14 +395,14 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
         return -1;
     }
     std::vector<int32_t> polyPathS;
-    THPPgetCDTencoding(task, HomotopyPolyIndex_Init, polyPathS);
+    THPPgetPRMencoding(task, HomotopyPolyIndex_Init, polyPathS);
 
     BIgraph &graph = BIgraphList[task.graphIndex];
     std::vector<BIcutline> &cutlineList = graph.cutlineList;
     BIinvnodeMap &invnode2cutlineMap = graph.invnode2cutlineMap;
 
-    std::vector<std::vector<int32_t>> GoalsCDTEncodingIndexSet(Goals.size()); // 也许将被弃用
-    std::vector<std::vector<std::vector<int32_t>>> GoalsCDTEncodingSet(Goals.size());
+    std::vector<std::vector<int32_t>> GoalsPRMEncodingIndexSet(Goals.size()); // 也许将被弃用
+    std::vector<std::vector<std::vector<int32_t>>> GoalsPRMEncodingSet(Goals.size());
     for (int32_t goalIndex = 0; goalIndex < Goals.size(); goalIndex++)
     {
         BIpoint &goal = Goals[goalIndex];
@@ -418,14 +418,14 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
             printf("error: Tether rope too short, can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
         }
-        GoalsCDTEncodingSet[goalIndex].reserve(task.EncodingSet[PolyIndex_Goal] + 1);
+        GoalsPRMEncodingSet[goalIndex].reserve(task.EncodingSet[PolyIndex_Goal] + 1);
         for (int32_t HomotopyID = 0; HomotopyID <= task.EncodingSet[PolyIndex_Goal]; HomotopyID++)
         {
             std::vector<int32_t> polyPathG;
             int32_t HomotopyPolyIndex_goal = (HomotopyID << 16) | PolyIndex_Goal;
-            THPPgetCDTencoding(task, HomotopyPolyIndex_goal, polyPathG);
+            THPPgetPRMencoding(task, HomotopyPolyIndex_goal, polyPathG);
             std::vector<BIline> cpath;
-            THPPgetCDTencodingCutline(task, HomotopyPolyIndex_goal, cpath, goal);
+            THPPgetPRMencodingCutline(task, HomotopyPolyIndex_goal, cpath, goal);
             // cpath.emplace_back(task.Origin, task.Origin);
             // int32_t polyPathOld = polyPathG.back();
             // for (int32_t polyPathIndex = polyPathG.size() - 2; polyPathIndex >= 0; polyPathIndex--)
@@ -442,41 +442,41 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
             GetLeastHomotopyPath(cpath, PathTemp, PathMinCost);
             if (PathMinCost > task.TetherLength)
                 continue;
-            GoalsCDTEncodingIndexSet[goalIndex].push_back(HomotopyPolyIndex_goal);
-            GoalsCDTEncodingSet[goalIndex].push_back(polyPathG);
+            GoalsPRMEncodingIndexSet[goalIndex].push_back(HomotopyPolyIndex_goal);
+            GoalsPRMEncodingSet[goalIndex].push_back(polyPathG);
 
             compCount++;
         }
-        if (GoalsCDTEncodingSet[goalIndex].size() == 0)
+        if (GoalsPRMEncodingSet[goalIndex].size() == 0)
         {
             printf("error: Tether rope too short, can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
         }
-        // std::cout << "GoalsCDTEncodingSet[goalIndex].size(): " << GoalsCDTEncodingSet[goalIndex].size() << std::endl;
+        // std::cout << "GoalsPRMEncodingSet[goalIndex].size(): " << GoalsPRMEncodingSet[goalIndex].size() << std::endl;
     }
 
     std::map<int64_t, tmvNode> tmvTree;
-    std::map<int32_t, int32_t> numCDTencoding; // The max number of 0-31 CDTencoding of tmvNode
-                                               // 即32-47:标识（0-31对应CDTencoding在树中的重复数）
+    std::map<int32_t, int32_t> numPRMencoding; // The max number of 0-31 PRMencoding of tmvNode
+                                               // 即32-47:标识（0-31对应PRMencoding在树中的重复数）
     std::priority_queue<std::pair<double, int64_t>,
                         std::vector<std::pair<double, int64_t>>,
                         std::greater<std::pair<double, int64_t>>>
         tmvQ; //{cost, tmvNodeID}
 
-    for (int32_t EncodingIndex = 0; EncodingIndex < GoalsCDTEncodingSet[0].size(); EncodingIndex++)
+    for (int32_t EncodingIndex = 0; EncodingIndex < GoalsPRMEncodingSet[0].size(); EncodingIndex++)
     {
-        // int32_t CDTencodingID = EncodingIndex | (0 << 16);
-        // int32_t CDTencodingcount;
-        // if (numCDTencoding.count(CDTencodingID))
-        //     CDTencodingcount = ++numCDTencoding[CDTencodingID];
+        // int32_t PRMencodingID = EncodingIndex | (0 << 16);
+        // int32_t PRMencodingcount;
+        // if (numPRMencoding.count(PRMencodingID))
+        //     PRMencodingcount = ++numPRMencoding[PRMencodingID];
         // else
-        //     numCDTencoding[CDTencodingID] = CDTencodingcount = 0;
-        // int64_t tmvNodeID = CDTencodingID | (CDTencodingcount << 32);
+        //     numPRMencoding[PRMencodingID] = PRMencodingcount = 0;
+        // int64_t tmvNodeID = PRMencodingID | (PRMencodingcount << 32);
         // 优化后
-        numCDTencoding[EncodingIndex] = 0;
+        numPRMencoding[EncodingIndex] = 0;
         int64_t tmvNodeID = EncodingIndex;
 
-        std::vector<int32_t> &polyPathG = GoalsCDTEncodingSet[0][EncodingIndex];
+        std::vector<int32_t> &polyPathG = GoalsPRMEncodingSet[0][EncodingIndex];
         std::list<BIpoint> PathTemp;
         double PathMinCost = THPPoptimalReConfig(task, polyPathS, polyPathG,
                                                  Init, Goals[0], PathTemp);
@@ -504,7 +504,7 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
             std::list<BIpoint> PathTemp;
             int32_t EncodingIndex = tmvNodeID & 0xFFFF;
             double minCost;
-            minCost = THPPoptimalReConfig(task, GoalsCDTEncodingSet[nodeGoalIndex][EncodingIndex],
+            minCost = THPPoptimalReConfig(task, GoalsPRMEncodingSet[nodeGoalIndex][EncodingIndex],
                                           polyPathS, Goals[nodeGoalIndex], Init, PathTemp);
             minPath.splice(minPath.begin(), PathTemp);
             while (node.par != -1)
@@ -513,8 +513,8 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
                 int32_t EncodingIndexPar = tmvNodeIDPar & 0xFFFF;
                 int32_t nodeGoalIndexPar = (tmvNodeIDPar >> 16) & 0xFFFF;
 
-                minCost += THPPoptimalReConfig(task, GoalsCDTEncodingSet[nodeGoalIndexPar][EncodingIndexPar],
-                                    GoalsCDTEncodingSet[nodeGoalIndex][EncodingIndex],
+                minCost += THPPoptimalReConfig(task, GoalsPRMEncodingSet[nodeGoalIndexPar][EncodingIndexPar],
+                                    GoalsPRMEncodingSet[nodeGoalIndex][EncodingIndex],
                                     Goals[nodeGoalIndexPar], Goals[nodeGoalIndex], PathTemp);
                 minPath.splice(minPath.begin(), PathTemp);
 
@@ -525,7 +525,7 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
 
                 compCount++;
             }
-            minCost += THPPoptimalReConfig(task, polyPathS, GoalsCDTEncodingSet[nodeGoalIndex][EncodingIndex],
+            minCost += THPPoptimalReConfig(task, polyPathS, GoalsPRMEncodingSet[nodeGoalIndex][EncodingIndex],
                                 Init, Goals[0], PathTemp);
 
             compCount += 2;
@@ -535,20 +535,20 @@ double BImap::TMVoptimalPlanner(THPPtask &task, int32_t HomotopyPolyIndex_Init, 
         }
 
         int32_t EncodingIndex_k = tmvNodeID & 0xFFFF;
-        std::vector<int32_t> &polyPathG_k = GoalsCDTEncodingSet[nodeGoalIndex][EncodingIndex_k];
+        std::vector<int32_t> &polyPathG_k = GoalsPRMEncodingSet[nodeGoalIndex][EncodingIndex_k];
 
         for (int32_t EncodingIndex_k1 = 0;
-             EncodingIndex_k1 < GoalsCDTEncodingSet[nodeGoalIndexNext].size();
+             EncodingIndex_k1 < GoalsPRMEncodingSet[nodeGoalIndexNext].size();
              EncodingIndex_k1++)
         {
-            int32_t CDTencodingID = EncodingIndex_k1 | (nodeGoalIndexNext << 16);
-            int32_t CDTencodingcount;
-            if (numCDTencoding.count(CDTencodingID))
-                CDTencodingcount = ++numCDTencoding[CDTencodingID];
+            int32_t PRMencodingID = EncodingIndex_k1 | (nodeGoalIndexNext << 16);
+            int32_t PRMencodingcount;
+            if (numPRMencoding.count(PRMencodingID))
+                PRMencodingcount = ++numPRMencoding[PRMencodingID];
             else
-                numCDTencoding[CDTencodingID] = CDTencodingcount = 0;
-            int64_t tmvNodeIDNext = CDTencodingID | ((int64_t)CDTencodingcount << 32);
-            std::vector<int32_t> &polyPathG_k1 = GoalsCDTEncodingSet[nodeGoalIndexNext][EncodingIndex_k1];
+                numPRMencoding[PRMencodingID] = PRMencodingcount = 0;
+            int64_t tmvNodeIDNext = PRMencodingID | ((int64_t)PRMencodingcount << 32);
+            std::vector<int32_t> &polyPathG_k1 = GoalsPRMEncodingSet[nodeGoalIndexNext][EncodingIndex_k1];
 
             double Cost_kk1 = doubleMax;
             double Cost_k1s = doubleMax;
@@ -583,13 +583,13 @@ double BImap::TMVoptimalPlannerViolent(THPPtask &task, int32_t HomotopyPolyIndex
         return -1;
     }
     std::vector<int32_t> polyPathS;
-    THPPgetCDTencoding(task, HomotopyPolyIndex_Init, polyPathS);
+    THPPgetPRMencoding(task, HomotopyPolyIndex_Init, polyPathS);
 
     BIgraph &graph = BIgraphList[task.graphIndex];
     std::vector<BIcutline> &cutlineList = graph.cutlineList;
     BIinvnodeMap &invnode2cutlineMap = graph.invnode2cutlineMap;
 
-    std::vector<std::vector<std::vector<int32_t>>> GoalsCDTEncodingSet(Goals.size());
+    std::vector<std::vector<std::vector<int32_t>>> GoalsPRMEncodingSet(Goals.size());
     for (int32_t goalIndex = 0; goalIndex < Goals.size(); goalIndex++)
     {
         BIpoint &goal = Goals[goalIndex];
@@ -605,31 +605,31 @@ double BImap::TMVoptimalPlannerViolent(THPPtask &task, int32_t HomotopyPolyIndex
             printf("error: Tether rope too short, can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
         }
-        GoalsCDTEncodingSet[goalIndex].reserve(task.EncodingSet[PolyIndex_Goal] + 1);
+        GoalsPRMEncodingSet[goalIndex].reserve(task.EncodingSet[PolyIndex_Goal] + 1);
         for (int32_t HomotopyID = 0; HomotopyID <= task.EncodingSet[PolyIndex_Goal]; HomotopyID++)
         {
             std::vector<int32_t> polyPathG;
             int32_t HomotopyPolyIndex_goal = (HomotopyID << 16) | PolyIndex_Goal;
-            THPPgetCDTencoding(task, HomotopyPolyIndex_goal, polyPathG);
+            THPPgetPRMencoding(task, HomotopyPolyIndex_goal, polyPathG);
             std::vector<BIline> cpath;
-            THPPgetCDTencodingCutline(task, HomotopyPolyIndex_goal, cpath, goal);
+            THPPgetPRMencodingCutline(task, HomotopyPolyIndex_goal, cpath, goal);
 
             double PathMinCost;
             std::list<BIpoint> PathTemp;
             GetLeastHomotopyPath(cpath, PathTemp, PathMinCost);
             if (PathMinCost > task.TetherLength)
                 continue;
-            GoalsCDTEncodingSet[goalIndex].push_back(polyPathG);
+            GoalsPRMEncodingSet[goalIndex].push_back(polyPathG);
 
             // compCount++;
         }
-        if (GoalsCDTEncodingSet[goalIndex].size() == 0)
+        if (GoalsPRMEncodingSet[goalIndex].size() == 0)
         {
             printf("error: Tether rope too short, can't be here: (%lf, %lf)!!\r\n", goal.x, goal.y);
             return -1;
         }
-        compCount *= GoalsCDTEncodingSet[goalIndex].size();
-        // std::cout << "GoalsCDTEncodingSet[goalIndex].size(): " << GoalsCDTEncodingSet[goalIndex].size() << std::endl;
+        compCount *= GoalsPRMEncodingSet[goalIndex].size();
+        // std::cout << "GoalsPRMEncodingSet[goalIndex].size(): " << GoalsPRMEncodingSet[goalIndex].size() << std::endl;
     }
     // std::cout << "compCount: " << compCount << std::endl;
 
@@ -643,18 +643,18 @@ double BImap::TMVoptimalPlannerViolent(THPPtask &task, int32_t HomotopyPolyIndex
         double costNew = 0;
         std::list<BIpoint> PathNew;
         std::list<BIpoint> PathTemp;
-        costNew += THPPoptimalReConfig(task, polyPathS, GoalsCDTEncodingSet[0][ArrangementCounter[0]],
+        costNew += THPPoptimalReConfig(task, polyPathS, GoalsPRMEncodingSet[0][ArrangementCounter[0]],
                                        Init, Goals[0], PathTemp);
         PathNew.splice(PathNew.end(), PathTemp);
         for (int32_t goalIndex = 1; goalIndex < Goals.size(); goalIndex++)
         {
             costNew += THPPoptimalReConfig(task,
-                                           GoalsCDTEncodingSet[goalIndex - 1][ArrangementCounter[goalIndex - 1]],
-                                           GoalsCDTEncodingSet[goalIndex][ArrangementCounter[goalIndex]],
+                                           GoalsPRMEncodingSet[goalIndex - 1][ArrangementCounter[goalIndex - 1]],
+                                           GoalsPRMEncodingSet[goalIndex][ArrangementCounter[goalIndex]],
                                            Goals[goalIndex - 1], Goals[goalIndex], PathTemp);
             PathNew.splice(PathNew.end(), PathTemp);
         }
-        costNew += THPPoptimalReConfig(task, GoalsCDTEncodingSet[Goals.size() - 1][ArrangementCounter[Goals.size() - 1]],
+        costNew += THPPoptimalReConfig(task, GoalsPRMEncodingSet[Goals.size() - 1][ArrangementCounter[Goals.size() - 1]],
                                        polyPathS, Goals[Goals.size() - 1], Init, PathTemp);
         PathNew.splice(PathNew.end(), PathTemp);
         if (costNew < costMin)
@@ -666,7 +666,7 @@ double BImap::TMVoptimalPlannerViolent(THPPtask &task, int32_t HomotopyPolyIndex
         int32_t Carryer = 0;
         while (true)
         {
-            if (++ArrangementCounter[Carryer] >= GoalsCDTEncodingSet[Carryer].size())
+            if (++ArrangementCounter[Carryer] >= GoalsPRMEncodingSet[Carryer].size())
             {
                 ArrangementCounter[Carryer] = 0;
                 Carryer++;
@@ -725,7 +725,7 @@ void BImap::GetAllOptConfigurations(THPPtask &task, BIpoint goal,
     {
         std::vector<BIline> cpath;
         int32_t HPolyIndex = (i << 16) | PolyIndex;
-        THPPgetCDTencodingCutline(task, HPolyIndex, cpath, goal);
+        THPPgetPRMencodingCutline(task, HPolyIndex, cpath, goal);
         std::list<BIpoint> Pathtemp;
         double Costtemp;
         GetLeastHomotopyPath(cpath, Pathtemp, Costtemp);
