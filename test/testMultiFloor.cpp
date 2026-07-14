@@ -64,7 +64,7 @@ int main()
     // };
 
     // 障碍物膨胀半径（像素），考虑机器狗体积
-    const double Expansion_radius = 6.0;
+    const double Expansion_radius = 8.0;
 
     printf("Loading floor maps (direct PNG, no PRM server)...\r\n");
     for (int i = 0; i < numFloors; i++)
