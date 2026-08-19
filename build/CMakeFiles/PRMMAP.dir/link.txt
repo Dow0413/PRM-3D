@@ -1,0 +1,2 @@
+/usr/bin/ar qc libPRMMAP.a CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmapcd.cpp.o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMcommon.cpp.o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMthpp.cpp.o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmultifloor.cpp.o CMakeFiles/PRMMAP.dir/lib/PRMMAP/debug.cpp.o
+/usr/bin/ranlib libPRMMAP.a

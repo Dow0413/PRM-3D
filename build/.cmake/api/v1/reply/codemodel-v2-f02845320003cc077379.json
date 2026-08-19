@@ -1,0 +1,78 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.1"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "PRM-MultiFloor",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "PRMMAP::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-PRMMAP-Debug-2ae6607becf287817884.json",
+					"name" : "PRMMAP",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "sim2d::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-sim2d-Debug-fa05ee01e85a1910d659.json",
+					"name" : "sim2d",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "testMultiFloor::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-testMultiFloor-Debug-273ac92428d22af431f8.json",
+					"name" : "testMultiFloor",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/dow/DOW/PRM-3D/build",
+		"source" : "/home/dow/DOW/PRM-3D"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

@@ -23,5 +23,5 @@ def count_black_and_white(image_path):
     return black_pixels, white_pixels
 
 # 使用示例（请将 'your_image.jpg' 替换为你的图片路径）
-image_file = '/home/dow/DOW/PRM-3D/expMap/galileo_5.png'
+image_file = '/home/dow/DOW/PRM-3D/output.png'
 count_black_and_white(image_file)

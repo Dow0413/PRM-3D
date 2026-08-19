@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <random>
 #include <unordered_map>
+#include <fstream>
+#include <cmath>
 
 // Forward declarations
 static inline int32_t getPolygonIndexFromMap(BImap* map, BIpoint pt, int32_t floorIndex);
@@ -27,6 +29,10 @@ void PRMMultiFloor::initialize(int numFloors)
     _traversableCache.resize(numFloors);
     _cacheWidth.resize(numFloors, 0);
     _cacheHeight.resize(numFloors, 0);
+    _roadmapBuilt.resize(numFloors, false);
+    _roadmapGrid.resize(numFloors);
+    _roadmapGridW.resize(numFloors, 0);
+    _roadmapGridH.resize(numFloors, 0);
 }
 
 void PRMMultiFloor::loadFloorGraph(int32_t floorIndex, const BIgraph& graph)
@@ -330,6 +336,60 @@ void KDTree2D::radiusSearchRecursive(int nodeIdx, const BIpoint& center, double 
     }
 }
 
+void KDTree2D::collectInRadius(int nodeIdx, const BIpoint& center, double radius, std::vector<int>& nodeIdxs) const
+{
+    if (nodeIdx < 0 || nodeIdx >= (int)_nodes.size()) return;
+    const KDNode& node = _nodes[nodeIdx];
+
+    if ((node.pt % center) <= radius)
+        nodeIdxs.push_back(nodeIdx);
+
+    int dim = node.splitDim;
+    double centerVal = (dim == 0) ? center.x : center.y;
+    double nodeVal   = (dim == 0) ? node.pt.x : node.pt.y;
+    double diff = centerVal - nodeVal;
+
+    if (diff <= 0)
+    {
+        collectInRadius(node.left, center, radius, nodeIdxs);
+        if (fabs(diff) <= radius)
+            collectInRadius(node.right, center, radius, nodeIdxs);
+    }
+    else
+    {
+        collectInRadius(node.right, center, radius, nodeIdxs);
+        if (fabs(diff) <= radius)
+            collectInRadius(node.left, center, radius, nodeIdxs);
+    }
+}
+
+void KDTree2D::kNearest(const BIpoint& center, int k, std::vector<int>& result) const
+{
+    result.clear();
+    if (_nodes.empty() || k <= 0) return;
+
+    // 半径指数增长，直到收集到 >= k 个候选（保证取到的确实是全局最近 k 个）
+    std::vector<int> nodeIdxs;
+    double r = 8.0;
+    for (int it = 0; it < 32 && (int)nodeIdxs.size() < k; ++it)
+    {
+        collectInRadius(0, center, r, nodeIdxs);
+        if ((int)nodeIdxs.size() >= k) break;
+        r *= 2.0;
+    }
+
+    // 按距离升序排序，取前 k 个 prmNodeIdx（对融合图而言 prmNodeIdx = 全局节点 id）
+    std::vector<std::pair<double, int>> dists;
+    dists.reserve(nodeIdxs.size());
+    for (int ni : nodeIdxs)
+        dists.emplace_back(_nodes[ni].pt % center, _nodes[ni].prmNodeIdx);
+    std::sort(dists.begin(), dists.end());
+    int n = std::min(k, (int)dists.size());
+    result.reserve((size_t)n);
+    for (int i = 0; i < n; ++i)
+        result.push_back(dists[i].second);
+}
+
 // ========== PRM Collision Checking Helpers ==========
 
 bool PRMMultiFloor::isPointTraversable(int floorIdx, double x, double y) const
@@ -459,35 +519,35 @@ void PRMMultiFloor::buildPRMForFloor(int floorIdx, BIpoint start, BIpoint goal)
         return true;
     };
 
-    // Step 1: Random sampling
+    // Step 1: 先收集所有自由像素，再从中均匀采样（无放回）。
+    // 自由空间很稀疏时，对全图 rejection sampling 几乎所有尝试都落空，这里直接采样自由像素。
     t0 = utime_ns();
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<double> distX(0.0, (double)(w - 1));
-    std::uniform_real_distribution<double> distY(0.0, (double)(h - 1));
+    std::vector<std::pair<int, int>> freePx;
+    freePx.reserve(1 << 16);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            if (cachePtr[y * w + x]) freePx.emplace_back(x, y);
 
-    int maxAttempts = effKNodes * 10;
-    int attempts = 0;
-    while ((int)prm.nodes.size() < effKNodes && attempts < maxAttempts)
-    {
-        attempts++;
-        double x = distX(gen), y = distY(gen);
-        if (pointFree(x, y))
-        {
-            PRMNode node;
-            node.point = {x, y, floorIdx};
-            prm.nodes.push_back(node);
-        }
-    }
-    t1 = utime_ns();
-    printf("Floor %d: sampling %zu nodes in %.1f ms (attempts=%d)\r\n",
-           floorIdx, prm.nodes.size(), (t1-t0)/1e6, attempts);
-
-    if (prm.nodes.empty())
+    if (freePx.empty())
     {
         printf("buildPRMForFloor: no traversable points found on floor %d!\r\n", floorIdx);
         return;
     }
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(freePx.begin(), freePx.end(), gen);
+    int target = std::min((int)freePx.size(), effKNodes);
+    prm.nodes.reserve(target);
+    for (int i = 0; i < target; ++i)
+    {
+        PRMNode node;
+        node.point = {(double)freePx[i].first, (double)freePx[i].second, floorIdx};
+        prm.nodes.push_back(node);
+    }
+    t1 = utime_ns();
+    printf("Floor %d: sampling %zu nodes in %.1f ms (free px=%zu)\r\n",
+           floorIdx, prm.nodes.size(), (t1 - t0) / 1e6, freePx.size());
 
     // Step 2: Add start, goal, and connection points
     auto addPoint = [&](BIpoint pt, int connId) -> int {
@@ -541,16 +601,16 @@ void PRMMultiFloor::buildPRMForFloor(int floorIdx, BIpoint start, BIpoint goal)
     t1 = utime_ns();
     printf("Floor %d: grid [%dx%d] built in %.1f ms\r\n", floorIdx, gridW, gridH, (t1-t0)/1e6);
 
-    // Step 4: Build neighbor edges (grid candidate lookup, raw pointer collision check)
+    // Step 4: 半径建边（3×3 网格邻域 + r_nei 距离 + segmentFree）。
+    // galileo 自由区是「面积紧凑但高度非凸（迷宫式）」——短直线(r_nei 内)能穿过通道把图连起来，
+    // 而 k-最近邻会跨过内部墙、被 segmentFree 拒掉导致碎片化，故这里用半径建边。
+    // 密度由采样节点数 k 控制（见 Step 1，自由像素较多时只取子集），避免边爆炸。
     t0 = utime_ns();
     int totalEdges = 0;
-    // 预计算每个格子在当前节点坐标的 gx,gy（在循环里算也行，不预先算更省内存）
     for (size_t i = 0; i < prm.nodes.size(); i++)
     {
         int gx = (int)(prm.nodes[i].point.x / effRNei);
         int gy = (int)(prm.nodes[i].point.y / effRNei);
-
-        // 检查 3×3 邻域格子
         for (int dy = -1; dy <= 1; dy++)
         {
             int ny = gy + dy;
@@ -559,13 +619,11 @@ void PRMMultiFloor::buildPRMForFloor(int floorIdx, BIpoint start, BIpoint goal)
             {
                 int nx = gx + dx;
                 if (nx < 0 || nx >= gridW) continue;
-
-                for (int j : grid[ny * gridW + nx])
+                for (int j : grid[(size_t)ny * gridW + nx])
                 {
                     if (j <= (int)i) continue;
                     double dx_ij = prm.nodes[i].point.x - prm.nodes[j].point.x;
                     double dy_ij = prm.nodes[i].point.y - prm.nodes[j].point.y;
-                    // 快速距离预检（避免 sqrt），半径平方
                     if (dx_ij * dx_ij + dy_ij * dy_ij > effRNei * effRNei) continue;
                     if (segmentFree(prm.nodes[i].point, prm.nodes[j].point))
                     {
@@ -578,9 +636,422 @@ void PRMMultiFloor::buildPRMForFloor(int floorIdx, BIpoint start, BIpoint goal)
         }
     }
     t1 = utime_ns();
-    printf("Floor %d: %d edges built in %.1f ms\r\n", floorIdx, totalEdges, (t1-t0)/1e6);
+    printf("Floor %d: %d edges built in %.1f ms\r\n", floorIdx, totalEdges, (t1 - t0) / 1e6);
 
-    printf("Floor %d: total build = %.1f ms\r\n", floorIdx, (t1-t_start)/1e6);
+    printf("Floor %d: total build = %.1f ms\r\n", floorIdx, (t1 - t_start) / 1e6);
+}
+
+// ========== 一次建图 + 多次重规划（动态避障仿真用） ==========
+
+// 基于已构建的 _traversableCache 做线段碰撞检测（buildRoadmap / replan 共用同一判定）
+bool PRMMultiFloor::segmentFreeCached(int floorIdx, const BIpoint& a, const BIpoint& b) const
+{
+    if (floorIdx < 0 || floorIdx >= _numFloors) return false;
+    int w = _cacheWidth[floorIdx], h = _cacheHeight[floorIdx];
+    if (w == 0) return true;  // 尚未建缓存，按可通行处理
+
+    double dist = a % b;
+    if (dist < 1e-6)
+    {
+        int ix = (int)a.x, iy = (int)a.y;
+        if (ix < 0 || ix >= w || iy < 0 || iy >= h) return false;
+        return _traversableCache[floorIdx][iy * w + ix] != 0;
+    }
+
+    int sampleStep = std::max(1, (int)(_prmGraphs[floorIdx].r_nei / 5.0));
+    int numSamples = std::max(2, (int)(dist / sampleStep) + 1);
+    double dx = b.x - a.x, dy = b.y - a.y;
+    double invN = 1.0 / (double)numSamples;
+    const uint8_t* cachePtr = _traversableCache[floorIdx].data();
+    for (int i = 0; i <= numSamples; i++)
+    {
+        double t = (double)i * invN;
+        int ix = (int)(a.x + t * dx);
+        int iy = (int)(a.y + t * dy);
+        if (ix < 0 || ix >= w || iy < 0 || iy >= h) return false;
+        if (cachePtr[iy * w + ix] == 0) return false;
+    }
+    return true;
+}
+
+bool PRMMultiFloor::buildRoadmap(int floorIdx)
+{
+    if (floorIdx < 0 || floorIdx >= _numFloors)
+    {
+        printf("buildRoadmap: invalid floor index %d\r\n", floorIdx);
+        return false;
+    }
+
+    // 复用现有建图逻辑：传入无效 start/goal，buildPRMForFloor 只构建采样节点 + 边 + 可通行缓存
+    // （其 Step2 因 start.x<0 且无 connection 而不插入任何特殊节点）
+    BIpoint dummyStart{-1, -1, -1}, dummyGoal{-1, -1, -1};
+    buildPRMForFloor(floorIdx, dummyStart, dummyGoal);
+
+    const PRMGraph& prm = _prmGraphs[floorIdx];
+    if (prm.nodes.empty())
+    {
+        printf("buildRoadmap: no traversable nodes on floor %d!\r\n", floorIdx);
+        _roadmapBuilt[floorIdx] = false;
+        return false;
+    }
+
+    // 重建并缓存空间网格（buildPRMForFloor 内的 grid 是局部变量），供 replan 给临时 start/goal 找邻居
+    int w = _cacheWidth[floorIdx], h = _cacheHeight[floorIdx];
+    double r = prm.r_nei > 0 ? prm.r_nei : _prmRNei;
+    int gridW = std::max(1, (int)(w / r));
+    int gridH = std::max(1, (int)(h / r));
+    auto& grid = _roadmapGrid[floorIdx];
+    grid.assign((size_t)gridW * gridH, {});
+    for (size_t i = 0; i < prm.nodes.size(); i++)
+    {
+        int gx = std::min(gridW - 1, std::max(0, (int)(prm.nodes[i].point.x / r)));
+        int gy = std::min(gridH - 1, std::max(0, (int)(prm.nodes[i].point.y / r)));
+        grid[(size_t)gy * gridW + gx].push_back((int)i);
+    }
+    _roadmapGridW[floorIdx] = gridW;
+    _roadmapGridH[floorIdx] = gridH;
+    _roadmapBuilt[floorIdx] = true;
+
+    printf("buildRoadmap: floor %d cached %zu nodes, grid [%dx%d]\r\n",
+           floorIdx, prm.nodes.size(), gridW, gridH);
+    return true;
+}
+
+double PRMMultiFloor::replan(int floorIdx, BIpoint start, BIpoint goal,
+                             const std::vector<DynamicObstacle>& obstacles,
+                             std::list<BIpoint>& path)
+{
+    path.clear();
+    if (floorIdx < 0 || floorIdx >= _numFloors) return -1.0;
+    if (!_roadmapBuilt[floorIdx])
+    {
+        printf("replan: roadmap not built for floor %d\r\n", floorIdx);
+        return -1.0;
+    }
+    if (!isPointTraversable(floorIdx, start.x, start.y))
+    {
+        printf("replan: start (%.1f,%.1f) on obstacle\r\n", start.x, start.y);
+        return -1.0;
+    }
+    if (!isPointTraversable(floorIdx, goal.x, goal.y))
+    {
+        printf("replan: goal (%.1f,%.1f) on obstacle\r\n", goal.x, goal.y);
+        return -1.0;
+    }
+
+    int64_t t0 = utime_ns();
+    start.floor = floorIdx;
+    goal.floor = floorIdx;
+
+    const PRMGraph& cached = _prmGraphs[floorIdx];
+    const int N = (int)cached.nodes.size();
+    const int startId = N;
+    const int goalId = N + 1;
+
+    // 拷贝静态节点为工作副本（不修改缓存路网），追加临时 start/goal 节点
+    std::vector<PRMNode> work = cached.nodes;  // 深拷贝（含各自的 neighbors）
+    work.push_back({start, {}});
+    work.push_back({goal, {}});
+
+    // 给临时 start/goal 找邻居：3×3 网格 + r_nei 预检 + segmentFreeCached，双向加边
+    double r = cached.r_nei > 0 ? cached.r_nei : _prmRNei;
+    int gridW = _roadmapGridW[floorIdx], gridH = _roadmapGridH[floorIdx];
+    const auto& grid = _roadmapGrid[floorIdx];
+    auto connectTemp = [&](int id)
+    {
+        int gx = (int)(work[id].point.x / r);
+        int gy = (int)(work[id].point.y / r);
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            int ny = gy + dy;
+            if (ny < 0 || ny >= gridH) continue;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int nx = gx + dx;
+                if (nx < 0 || nx >= gridW) continue;
+                for (int j : grid[(size_t)ny * gridW + nx])
+                {
+                    if (j == id) continue;
+                    double ddx = work[id].point.x - work[j].point.x;
+                    double ddy = work[id].point.y - work[j].point.y;
+                    if (ddx * ddx + ddy * ddy > r * r) continue;
+                    if (segmentFreeCached(floorIdx, work[id].point, work[j].point))
+                    {
+                        work[id].neighbors.push_back(j);
+                        work[j].neighbors.push_back(id);
+                    }
+                }
+            }
+        }
+    };
+    connectTemp(startId);
+    connectTemp(goalId);
+
+    // 障碍物边阻挡判定：任一障碍圆心到该边的最近距离 <= radius 即视为被挡
+    auto edgeBlocked = [&](int u, int v) -> bool
+    {
+        const BIpoint& a = work[u].point;
+        const BIpoint& b = work[v].point;
+        for (const auto& obs : obstacles)
+            if (Point2LineDistance(obs.center, a, b) <= obs.radius) return true;
+        return false;
+    };
+
+    // Dijkstra（单层，状态 = nodeIdx）
+    std::vector<double> gScore(work.size(), std::numeric_limits<double>::max());
+    std::vector<int> parent(work.size(), -1);
+    std::vector<char> visited(work.size(), 0);
+    struct PQE
+    {
+        double g;
+        int node;
+        bool operator>(const PQE& o) const { return g > o.g; }
+    };
+    std::priority_queue<PQE, std::vector<PQE>, std::greater<PQE>> open;
+
+    gScore[startId] = 0.0;
+    open.push({0.0, startId});
+
+    bool found = false;
+    while (!open.empty())
+    {
+        PQE cur = open.top();
+        open.pop();
+        if (visited[cur.node]) continue;
+        visited[cur.node] = 1;
+        if (cur.node == goalId) { found = true; break; }
+
+        for (int nb : work[cur.node].neighbors)
+        {
+            if (visited[nb]) continue;
+            if (edgeBlocked(cur.node, nb)) continue;
+            double ec = work[cur.node].point % work[nb].point;
+            double ng = cur.g + ec;
+            if (ng < gScore[nb])
+            {
+                gScore[nb] = ng;
+                parent[nb] = cur.node;
+                open.push({ng, nb});
+            }
+        }
+    }
+
+    if (!found)
+    {
+        printf("replan: no path to goal (obstacles=%zu)\r\n", obstacles.size());
+        return -1.0;
+    }
+
+    // 回溯重建路径
+    std::list<BIpoint> result;
+    for (int c = goalId; c >= 0; c = parent[c])
+    {
+        BIpoint pt = work[c].point;
+        pt.floor = floorIdx;
+        result.push_front(pt);
+    }
+    path = result;
+
+    int64_t t1 = utime_ns();
+    printf("replan: %zu pts, cost=%.2f, %.2f ms (obstacles=%zu)\r\n",
+           path.size(), gScore[goalId], (t1 - t0) / 1e6, obstacles.size());
+    return gScore[goalId];
+}
+
+// 多楼层重规划：复用各层缓存路网（含连接点节点），虚拟插入跨楼层 start/goal，
+// 多楼层 Dijkstra（同楼层边按动态障碍阻挡 + 跨楼层连接边）。不重建路网、不修改缓存。
+double PRMMultiFloor::replanMultiFloor(MultiFloorTask& task,
+                                       const std::vector<DynamicObstacle>& obstacles)
+{
+    task.path.clear();
+    task.totalCost = 0;
+
+    int startFloor = task.start.floor;
+    int goalFloor = task.goal.floor;
+    if (startFloor < 0 || startFloor >= _numFloors ||
+        goalFloor < 0 || goalFloor >= _numFloors) return -1.0;
+    if (!_roadmapBuilt[startFloor] || !_roadmapBuilt[goalFloor])
+    {
+        printf("replanMultiFloor: roadmap not built (F%d/F%d)\r\n", startFloor, goalFloor);
+        return -1.0;
+    }
+    if (!isPointTraversable(startFloor, task.start.x, task.start.y))
+    {
+        printf("replanMultiFloor: start F%d (%.1f,%.1f) on obstacle\r\n",
+               startFloor, task.start.x, task.start.y);
+        return -1.0;
+    }
+    if (!isPointTraversable(goalFloor, task.goal.x, task.goal.y))
+    {
+        printf("replanMultiFloor: goal F%d (%.1f,%.1f) on obstacle\r\n",
+               goalFloor, task.goal.x, task.goal.y);
+        return -1.0;
+    }
+
+    int64_t t0 = utime_ns();
+    BIpoint S = task.start, G = task.goal;
+    S.floor = startFloor; G.floor = goalFloor;
+
+    // 拷贝各层缓存节点为工作副本（追加临时 start/goal 不污染缓存）
+    std::vector<std::vector<PRMNode>> work(_numFloors);
+    for (int f = 0; f < _numFloors; ++f) work[f] = _prmGraphs[f].nodes;
+
+    int startId = (int)work[startFloor].size();
+    work[startFloor].push_back({S, {}});
+    int goalId = (int)work[goalFloor].size();
+    work[goalFloor].push_back({G, {}});
+
+    // 给临时 start/goal 连邻居（用缓存空间网格 + segmentFreeCached，双向加边）
+    auto connectTemp = [&](int fl, int id)
+    {
+        double r = _prmGraphs[fl].r_nei > 0 ? _prmGraphs[fl].r_nei : _prmRNei;
+        int gw = _roadmapGridW[fl], gh = _roadmapGridH[fl];
+        const auto& grid = _roadmapGrid[fl];
+        int gx = (int)(work[fl][id].point.x / r);
+        int gy = (int)(work[fl][id].point.y / r);
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            int ny = gy + dy;
+            if (ny < 0 || ny >= gh) continue;
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                int nx = gx + dx;
+                if (nx < 0 || nx >= gw) continue;
+                for (int j : grid[(size_t)ny * gw + nx])
+                {
+                    if (j == id) continue;
+                    double ddx = work[fl][id].point.x - work[fl][j].point.x;
+                    double ddy = work[fl][id].point.y - work[fl][j].point.y;
+                    if (ddx * ddx + ddy * ddy > r * r) continue;
+                    if (segmentFreeCached(fl, work[fl][id].point, work[fl][j].point))
+                    {
+                        work[fl][id].neighbors.push_back(j);
+                        work[fl][j].neighbors.push_back(id);
+                    }
+                }
+            }
+        }
+    };
+    connectTemp(startFloor, startId);
+    connectTemp(goalFloor, goalId);
+
+    // 跨楼层连接边（用缓存 connIdToNodeIdx；连接点节点在 work 中索引不变）
+    struct CrossEdge { int tgtFloor; int tgtNode; double cost; };
+    std::map<std::pair<int, int>, std::vector<CrossEdge>> crossEdges;
+    for (const auto& conn : _multiFloorGraph.connections)
+    {
+        int f1 = conn.pointFrom.floor, f2 = conn.pointTo.floor;
+        if (f1 < 0 || f1 >= _numFloors || f2 < 0 || f2 >= _numFloors) continue;
+        auto it1 = _prmGraphs[f1].connIdToNodeIdx.find(conn.id);
+        auto it2 = _prmGraphs[f2].connIdToNodeIdx.find(conn.id);
+        if (it1 == _prmGraphs[f1].connIdToNodeIdx.end() ||
+            it2 == _prmGraphs[f2].connIdToNodeIdx.end()) continue;
+        crossEdges[{f1, it1->second}].push_back({f2, it2->second, conn.cost});
+        crossEdges[{f2, it2->second}].push_back({f1, it1->second, conn.cost});
+    }
+
+    // 同楼层边是否被该层动态障碍挡住
+    auto edgeBlocked = [&](int fl, int u, int v) -> bool
+    {
+        const BIpoint& a = work[fl][u].point;
+        const BIpoint& b = work[fl][v].point;
+        for (const auto& obs : obstacles)
+            if (obs.floor == fl && Point2LineDistance(obs.center, a, b) <= obs.radius) return true;
+        return false;
+    };
+
+    // 多楼层 Dijkstra（状态 = (floor, nodeIdx)）
+    struct PQE
+    {
+        double g;
+        int floor;
+        int node;
+        int pFloor;
+        int pNode;
+        bool operator>(const PQE& o) const { return g > o.g; }
+    };
+    struct PairHash
+    {
+        size_t operator()(const std::pair<int, int>& p) const
+        {
+            return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
+        }
+    };
+    struct ClosedInfo { double g; int pFloor; int pNode; };
+    std::unordered_map<std::pair<int, int>, ClosedInfo, PairHash> closed;
+    std::priority_queue<PQE, std::vector<PQE>, std::greater<PQE>> open;
+
+    open.push({0.0, startFloor, startId, -1, -1});
+    bool found = false;
+    PQE goalEntry;
+    while (!open.empty())
+    {
+        PQE cur = open.top();
+        open.pop();
+        auto key = std::make_pair(cur.floor, cur.node);
+        if (closed.count(key)) continue;
+        closed[key] = {cur.g, cur.pFloor, cur.pNode};
+        if (cur.floor == goalFloor && cur.node == goalId) { found = true; goalEntry = cur; break; }
+
+        // 同楼层邻居（跳过被障碍挡住的边）
+        for (int nb : work[cur.floor][cur.node].neighbors)
+        {
+            auto nk = std::make_pair(cur.floor, nb);
+            if (closed.count(nk)) continue;
+            if (edgeBlocked(cur.floor, cur.node, nb)) continue;
+            double ec = work[cur.floor][cur.node].point % work[cur.floor][nb].point;
+            open.push({cur.g + ec, cur.floor, nb, cur.floor, cur.node});
+        }
+        // 跨楼层连接边
+        auto cf = crossEdges.find(key);
+        if (cf != crossEdges.end())
+            for (const auto& ce : cf->second)
+            {
+                auto nk = std::make_pair(ce.tgtFloor, ce.tgtNode);
+                if (closed.count(nk)) continue;
+                open.push({cur.g + ce.cost, ce.tgtFloor, ce.tgtNode, cur.floor, cur.node});
+            }
+    }
+
+    if (!found) { printf("replanMultiFloor: no path\r\n"); return -1.0; }
+
+    // 回溯重建路径
+    std::list<BIpoint> path;
+    int cf2 = goalEntry.floor, cn = goalEntry.node;
+    while (cn >= 0)
+    {
+        BIpoint pt = work[cf2][cn].point;
+        pt.floor = cf2;
+        path.push_front(pt);
+        auto it = closed.find(std::make_pair(cf2, cn));
+        if (it == closed.end()) break;
+        cf2 = it->second.pFloor;
+        cn = it->second.pNode;
+    }
+    task.path = path;
+    task.totalCost = goalEntry.g;
+
+    int64_t t1 = utime_ns();
+    printf("replanMultiFloor: %zu pts, cost=%.2f, %.2f ms (obstacles=%zu)\r\n",
+           path.size(), goalEntry.g, (t1 - t0) / 1e6, obstacles.size());
+    return goalEntry.g;
+}
+
+const PRMGraph& PRMMultiFloor::getRoadmap(int floorIdx) const
+{
+    static const PRMGraph kEmpty = PRMGraph{};
+    if (floorIdx < 0 || floorIdx >= _numFloors) return kEmpty;
+    return _prmGraphs[floorIdx];
+}
+
+bool PRMMultiFloor::roadmapBuilt(int floorIdx) const
+{
+    return (floorIdx >= 0 && floorIdx < _numFloors) ? _roadmapBuilt[floorIdx] : false;
+}
+
+bool PRMMultiFloor::pointTraversable(int floorIdx, double x, double y) const
+{
+    return isPointTraversable(floorIdx, x, y);
 }
 
 double PRMMultiFloor::planInSingleFloor(int32_t floorIndex,
@@ -965,5 +1436,319 @@ double PRMMultiFloor::plan(MultiFloorTask& task)
     task.totalCost = goalEntry.g;
 
     printf("PRM path found: %zu points, total cost: %.2f\r\n", path.size(), goalEntry.g);
+    return task.totalCost;
+}
+
+// ========== 全局融合图：离线图融合 + 在线起点插入 ==========
+
+const FusedGraph& PRMMultiFloor::getFusedGraph() const { return _fused; }
+const std::vector<TopoPolygon>& PRMMultiFloor::getTopoPolygons() const { return _topoPolygons; }
+bool PRMMultiFloor::fusedBuilt() const { return _fusedBuilt; }
+
+void PRMMultiFloor::setFuseParams(int kNeighbors, double crossRadius)
+{
+    _fuseKNodes = std::max(1, kNeighbors);
+    if (crossRadius > 0) _fuseCrossRadius = crossRadius;
+}
+
+bool PRMMultiFloor::loadConnectionsJson(const std::string& path)
+{
+    std::ifstream fin(path);
+    if (!fin.is_open())
+    {
+        printf("loadConnectionsJson: 无法打开 %s\r\n", path.c_str());
+        return false;
+    }
+    json j;
+    fin >> j;
+
+    _topoPolygons.clear();
+    // 顶层 expandRadius 兼作多边形内跨层连边的距离阈值（可再用 setFuseParams 覆盖）
+    if (j.contains("expandRadius") && j["expandRadius"].is_number())
+        _fuseCrossRadius = j["expandRadius"].get<double>();
+
+    if (j.contains("connections") && j["connections"].is_array())
+    {
+        for (const auto& c : j["connections"])
+        {
+            TopoPolygon tp;
+            tp.fromFloor = c.value("fromFloor", -1);
+            tp.toFloor   = c.value("toFloor", -1);
+            tp.cost      = c.value("cost", 15.0);
+            if (c.contains("polygon") && c["polygon"].is_array())
+            {
+                for (const auto& v : c["polygon"])
+                {
+                    if (v.is_array() && v.size() >= 2)
+                        tp.vertices.push_back(BIpoint{v.at(0).get<double>(),
+                                                      v.at(1).get<double>(), 0});
+                }
+            }
+            // 有效条件：楼层合法 + 至少 3 个顶点（成面）
+            if (tp.fromFloor >= 0 && tp.toFloor >= 0 && tp.vertices.size() >= 3)
+                _topoPolygons.push_back(std::move(tp));
+        }
+    }
+    printf("loadConnectionsJson: 从 %s 解析到 %zu 个并集多边形, crossRadius=%.1f\r\n",
+           path.c_str(), _topoPolygons.size(), _fuseCrossRadius);
+    return !_topoPolygons.empty();
+}
+
+bool PRMMultiFloor::fuseGraph()
+{
+    if (_numFloors <= 0)
+    {
+        printf("fuseGraph: 未初始化楼层数\r\n");
+        return false;
+    }
+
+    // 1. 把所有楼层已缓存的路网节点缝合成全局扁平节点表，赋全局 id
+    _fused = FusedGraph{};
+    _fused.floorNodeStart.assign((size_t)_numFloors + 1, 0);
+    for (int f = 0; f < _numFloors; ++f)
+    {
+        _fused.floorNodeStart[f] = (int)_fused.nodes.size();
+        if (!_roadmapBuilt[f])
+            printf("fuseGraph: floor %d 尚未 buildRoadmap，节点可能为空\r\n", f);
+        const PRMGraph& prm = _prmGraphs[f];
+        for (size_t i = 0; i < prm.nodes.size(); ++i)
+        {
+            MapNode n;
+            n.id = (int)_fused.nodes.size();
+            n.x = prm.nodes[i].point.x;
+            n.y = prm.nodes[i].point.y;
+            n.floor_id = f;
+            _fused.nodes.push_back(n);
+        }
+    }
+    _fused.floorNodeStart[_numFloors] = (int)_fused.nodes.size();
+    _fused.adj.assign(_fused.nodes.size(), {});
+    _fused.edges.clear();
+
+    // 无向加边：一条边存一份，两端邻接表共享同一下标
+    auto addEdge = [&](int u, int v, double w, bool cross)
+    {
+        int e = (int)_fused.edges.size();
+        _fused.edges.push_back(MapEdge{u, v, w, cross});
+        _fused.adj[u].push_back(e);
+        _fused.adj[v].push_back(e);
+    };
+
+    // 2. 同层边：从各层 PRM 的 neighbors 拷贝，权重 = 欧氏距离
+    for (int f = 0; f < _numFloors; ++f)
+    {
+        const PRMGraph& prm = _prmGraphs[f];
+        int base = _fused.floorNodeStart[f];
+        for (size_t i = 0; i < prm.nodes.size(); ++i)
+        {
+            int u = base + (int)i;
+            for (int nb : prm.nodes[i].neighbors)
+            {
+                if (nb <= (int)i) continue;  // 每条同层边只加一次
+                int v = base + nb;
+                double w = prm.nodes[i].point % prm.nodes[nb].point;
+                addEdge(u, v, w, false);
+            }
+        }
+    }
+
+    // 3. 跨层边：对每个拓扑并集多边形，取两楼层落在多边形内的节点，
+    //    欧氏距离 < _fuseCrossRadius 则建跨层边（权重 = 楼梯代价 cost）
+    for (const TopoPolygon& tp : _topoPolygons)
+    {
+        int f1 = tp.fromFloor, f2 = tp.toFloor;
+        if (f1 < 0 || f1 >= _numFloors || f2 < 0 || f2 >= _numFloors) continue;
+
+        std::vector<int> in1, in2;
+        for (int id = _fused.floorNodeStart[f1]; id < _fused.floorNodeStart[f1 + 1]; ++id)
+            if (tp.contains(_fused.nodes[id].x, _fused.nodes[id].y)) in1.push_back(id);
+        for (int id = _fused.floorNodeStart[f2]; id < _fused.floorNodeStart[f2 + 1]; ++id)
+            if (tp.contains(_fused.nodes[id].x, _fused.nodes[id].y)) in2.push_back(id);
+
+        int cnt = 0;
+        for (int a : in1)
+        {
+            for (int b : in2)
+            {
+                double dx = _fused.nodes[a].x - _fused.nodes[b].x;
+                double dy = _fused.nodes[a].y - _fused.nodes[b].y;
+                if (std::sqrt(dx * dx + dy * dy) < _fuseCrossRadius)
+                {
+                    addEdge(a, b, tp.cost, true);
+                    ++cnt;
+                }
+            }
+        }
+        printf("fuseGraph: F%d<->F%d 多边形内节点 %zu/%zu，跨层边 %d\r\n",
+               f1, f2, in1.size(), in2.size(), cnt);
+    }
+
+    // 4. 每层建 KD-Tree（存全局节点 id），供在线插入 KNN
+    _fusedKD.assign((size_t)_numFloors, KDTree2D{});
+    for (int f = 0; f < _numFloors; ++f)
+    {
+        int cnt = _fused.floorNodeStart[f + 1] - _fused.floorNodeStart[f];
+        std::vector<BIpoint> pts;
+        std::vector<int> ids;
+        pts.reserve((size_t)cnt);
+        ids.reserve((size_t)cnt);
+        for (int id = _fused.floorNodeStart[f]; id < _fused.floorNodeStart[f + 1]; ++id)
+        {
+            pts.push_back(BIpoint{_fused.nodes[id].x, _fused.nodes[id].y, f});
+            ids.push_back(id);
+        }
+        if (!pts.empty()) _fusedKD[f].build(pts, ids);
+    }
+
+    _fusedBuilt = true;
+    printf("fuseGraph: 融合完成，总节点 %zu，总边 %zu\r\n", _fused.nodes.size(), _fused.edges.size());
+    return true;
+}
+
+double PRMMultiFloor::planFused(MultiFloorTask& task, const std::vector<DynamicObstacle>& obstacles)
+{
+    task.path.clear();
+    task.totalCost = 0.0;
+
+    if (!_fusedBuilt)
+    {
+        printf("planFused: 请先调用 fuseGraph()\r\n");
+        return -1.0;
+    }
+    int startFloor = task.start.floor;
+    int goalFloor = task.goal.floor;
+    if (startFloor < 0 || startFloor >= _numFloors ||
+        goalFloor < 0 || goalFloor >= _numFloors)
+    {
+        printf("planFused: 起终点楼层非法 (%d -> %d)\r\n", startFloor, goalFloor);
+        return -1.0;
+    }
+    if (!isPointTraversable(startFloor, task.start.x, task.start.y))
+    {
+        printf("planFused: 起点 (%.1f,%.1f) 在障碍上\r\n", task.start.x, task.start.y);
+        return -1.0;
+    }
+    if (!isPointTraversable(goalFloor, task.goal.x, task.goal.y))
+    {
+        printf("planFused: 终点 (%.1f,%.1f) 在障碍上\r\n", task.goal.x, task.goal.y);
+        return -1.0;
+    }
+
+    // 工作副本：不修改融合图本身，sim2d 多次重规划也不累积临时节点
+    std::vector<MapNode> nodes = _fused.nodes;
+    std::vector<MapEdge> edges = _fused.edges;
+    std::vector<std::vector<int>> adj = _fused.adj;
+
+    // 在线插入 start/goal：多边形感知 KNN
+    auto insertNode = [&](const BIpoint& pt) -> int
+    {
+        int id = (int)nodes.size();
+        nodes.push_back(MapNode{id, pt.x, pt.y, pt.floor});
+        adj.push_back({});
+
+        // 情况1：pt 落在「本楼层作为端点」的并集多边形内 → 同时查该过渡区两端楼层的 KD-Tree
+        //   （"无视 floor_id" 的落点：不限定只连 floor_id 那一层，两端都连，兼容过渡期楼层号未刷新；
+        //     但只认「机器人当前楼层参与的」过渡区，避免两个楼梯井重叠在相同 (x,y) 却服务
+        //     不同楼层时误连到不相邻楼层——即避免"跳楼"）
+        // 情况2：普通平地区域 → 只查本层 KD-Tree
+        std::set<int> floors;
+        for (const TopoPolygon& tp : _topoPolygons)
+        {
+            if (pt.floor != tp.fromFloor && pt.floor != tp.toFloor) continue;
+            if (tp.contains(pt.x, pt.y))
+            {
+                floors.insert(tp.fromFloor);
+                floors.insert(tp.toFloor);
+            }
+        }
+        if (floors.empty())
+            floors.insert(pt.floor);
+
+        for (int f : floors)
+        {
+            if (f < 0 || f >= _numFloors) continue;
+            std::vector<int> kn;
+            _fusedKD[f].kNearest(BIpoint{pt.x, pt.y, f}, _fuseKNodes, kn);
+            for (int nb : kn)
+            {
+                double dx = pt.x - nodes[nb].x;
+                double dy = pt.y - nodes[nb].y;
+                double w = std::sqrt(dx * dx + dy * dy);
+                int e = (int)edges.size();
+                edges.push_back(MapEdge{id, nb, w, false});
+                adj[id].push_back(e);
+                adj[nb].push_back(e);
+            }
+        }
+        return id;
+    };
+
+    int startId = insertNode(task.start);
+    int goalId  = insertNode(task.goal);
+
+    // Dijkstra（全局节点 id 上的单源最短路）
+    const double DINF = std::numeric_limits<double>::infinity();
+    int N = (int)nodes.size();
+    std::vector<double> g(N, DINF);
+    std::vector<int> parent(N, -1);
+
+    using PQ = std::pair<double, int>;  // (cost, node_id)
+    std::priority_queue<PQ, std::vector<PQ>, std::greater<PQ>> open;
+    g[startId] = 0.0;
+    open.push({0.0, startId});
+
+    bool found = false;
+    while (!open.empty())
+    {
+        auto [gc, u] = open.top();
+        open.pop();
+        if (gc > g[u]) continue;
+        if (u == goalId) { found = true; break; }
+
+        for (int e : adj[u])
+        {
+            const MapEdge& ed = edges[e];
+            int v = (ed.from_id == u) ? ed.to_id : ed.from_id;
+
+            // 动态障碍只挡同层边（跨层楼梯边假设始终可通行）
+            if (!ed.is_cross_map)
+            {
+                int fl = nodes[u].floor_id;  // 同层边两端同层
+                bool blocked = false;
+                for (const DynamicObstacle& obs : obstacles)
+                {
+                    if (obs.floor != fl) continue;
+                    if (Point2LineDistance(obs.center,
+                                           BIpoint{nodes[u].x, nodes[u].y, fl},
+                                           BIpoint{nodes[v].x, nodes[v].y, fl}) <= obs.radius)
+                    { blocked = true; break; }
+                }
+                if (blocked) continue;
+            }
+
+            double ng = gc + ed.weight;
+            if (ng < g[v])
+            {
+                g[v] = ng;
+                parent[v] = u;
+                open.push({ng, v});
+            }
+        }
+    }
+
+    if (!found || g[goalId] >= DINF)
+    {
+        printf("planFused: 未找到路径 (F%d -> F%d)\r\n", startFloor, goalFloor);
+        return -1.0;
+    }
+
+    // 回溯路径（每个点带 floor）
+    std::list<BIpoint> path;
+    for (int c = goalId; c != -1; c = parent[c])
+        path.push_front(BIpoint{nodes[c].x, nodes[c].y, nodes[c].floor_id});
+
+    task.path = path;
+    task.totalCost = g[goalId];
+    printf("planFused: 找到路径 %zu 点，总代价 %.2f\r\n", path.size(), task.totalCost);
     return task.totalCost;
 }

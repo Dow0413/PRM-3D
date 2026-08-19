@@ -1,0 +1,44 @@
+[
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmapcd.cpp.o -c /home/dow/DOW/PRM-3D/lib/PRMMAP/PRMmapcd.cpp",
+  "file": "/home/dow/DOW/PRM-3D/lib/PRMMAP/PRMmapcd.cpp",
+  "output": "CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmapcd.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMcommon.cpp.o -c /home/dow/DOW/PRM-3D/lib/PRMMAP/PRMcommon.cpp",
+  "file": "/home/dow/DOW/PRM-3D/lib/PRMMAP/PRMcommon.cpp",
+  "output": "CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMcommon.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMthpp.cpp.o -c /home/dow/DOW/PRM-3D/lib/PRMMAP/PRMthpp.cpp",
+  "file": "/home/dow/DOW/PRM-3D/lib/PRMMAP/PRMthpp.cpp",
+  "output": "CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMthpp.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmultifloor.cpp.o -c /home/dow/DOW/PRM-3D/lib/PRMMAP/PRMmultifloor.cpp",
+  "file": "/home/dow/DOW/PRM-3D/lib/PRMMAP/PRMmultifloor.cpp",
+  "output": "CMakeFiles/PRMMAP.dir/lib/PRMMAP/PRMmultifloor.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/PRMMAP.dir/lib/PRMMAP/debug.cpp.o -c /home/dow/DOW/PRM-3D/lib/PRMMAP/debug.cpp",
+  "file": "/home/dow/DOW/PRM-3D/lib/PRMMAP/debug.cpp",
+  "output": "CMakeFiles/PRMMAP.dir/lib/PRMMAP/debug.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/testMultiFloor.dir/test/testMultiFloor.cpp.o -c /home/dow/DOW/PRM-3D/test/testMultiFloor.cpp",
+  "file": "/home/dow/DOW/PRM-3D/test/testMultiFloor.cpp",
+  "output": "CMakeFiles/testMultiFloor.dir/test/testMultiFloor.cpp.o"
+},
+{
+  "directory": "/home/dow/DOW/PRM-3D/build",
+  "command": "/usr/bin/g++  -I/home/dow/DOW/PRM-3D -I/home/dow/DOW/PRM-3D/lib -I/home/dow/DOW/PRM-3D/lib/PRMMAP -I/home/dow/DOW/PRM-3D/lib/CSubdivision -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/sim2d.dir/test/sim2d.cpp.o -c /home/dow/DOW/PRM-3D/test/sim2d.cpp",
+  "file": "/home/dow/DOW/PRM-3D/test/sim2d.cpp",
+  "output": "CMakeFiles/sim2d.dir/test/sim2d.cpp.o"
+}
+]

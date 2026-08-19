@@ -36,3 +36,12 @@ target_link_libraries(testMultiFloor PUBLIC
     ${OpenCV_LIBS}
     PRMMAP
 )
+
+# 2D 交互仿真：规划 + 避障 + 反应式重规划
+add_executable(sim2d
+    test/sim2d.cpp
+)
+target_link_libraries(sim2d PUBLIC
+    ${OpenCV_LIBS}
+    PRMMAP
+)
