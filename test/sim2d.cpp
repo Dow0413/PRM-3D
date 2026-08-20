@@ -35,12 +35,12 @@
 // ==================== 配置（照搬 testMultiFloor） ====================
 static const int    NUM_FLOORS           = 6;
 static const char*  FLOOR_PATHS[] = {
-    "/home/dow/DOW/PRM-3D/expMap/35/356_1.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_2.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_3.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_4.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_5.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_6.png"
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_1.png",
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_2.png",
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_3.png",
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_4.png",
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_5.png",
+    "/home/dow/DOW/PRM-3D/expMap/35_all/356_6.png"
 };
 static const double EXPANSION_RADIUS     = 4.0;    // 静态障碍膨胀
 static const double FORBID_RADIUS        = 4.0;    // 动态障碍膨胀半径 = 机器狗 keepout
@@ -59,12 +59,12 @@ struct FloorPRM { int k; double r; };
 // 节点数 k 控制路网密度：galileo 自由区面积小且非凸，采样全部自由像素会让边爆炸、规划变慢；
 // 取 k≈500（自由像素的子集）+ r=25 半径建边（短直线穿过迷宫通道），既连通又快（跨楼层规划~75ms）。
 static const FloorPRM FLOOR_PRM[NUM_FLOORS] = {
-    {500, 25.0}, {500, 25.0}, {500, 25.0}, {500, 25.0}, {500, 25.0}
+    {500, 25.0}, {500, 25.0}, {500, 25.0}, {500, 25.0}, {500, 25.0}, {500, 25.0}
 };
 
 // 拓扑并集空间（多边形）由 mark_connections.py 生成，规划器从 JSON 解析后做离线融合。
 // 不再手工维护连接点：相邻楼层两图都可行的重叠区域 = 跨层过渡区。
-static const char* CONNECTIONS_JSON = "/home/dow/DOW/PRM-3D/connections35.json";
+static const char* CONNECTIONS_JSON = "/home/dow/DOW/PRM-3D/connections35_all.json";
 // ====================================================================
 
 struct Obstacle { BIpoint center; double radius; int floor; };

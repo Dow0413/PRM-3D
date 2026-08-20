@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-build_navmesh_tool.py —— 纯手动导航网格 (NavMesh) 铺设工具
+build_navmesh_tool.py —— 批量流水线：纯手动导航网格 (NavMesh) 铺设工具
 
 操作说明：
-  - 右键单击 (RMB)：在白色区域点击 -> 创建新顶点。
-  - 左键单击 (LMB)：点击现有顶点 -> 选中 / 取消选中（用于连面或调Z）。
+  - 左键单击 (LMB)：点击空白区域 -> 创建新顶点；点击现有顶点 -> 选中/取消选中。
   - 中键按住 (MMB)：按住现有顶点拖动 -> 实时改变顶点 X,Y 坐标（限制在白区）。
+  - c：清空当前的选中状态 (Clear Selection)。
   - w / s：选中了单个顶点时，微调该顶点的 Z 值 (e/x 为大步调)。
   - f (Face)：当刚好选中 3 个顶点时，按下 f 键将它们连成一个三角面。
   - x / delete / backspace：彻底删除选中的节点（会自动解除关联的面）。
-  - p：保存结果。
+  - p 键：保存当前提取的合并高程图与拓扑结构，并自动无缝切换到下一张地图！
+  - q 键：退出。
 """
 
 import os
@@ -23,24 +24,61 @@ import cv2
 import numpy as np
 
 # ==========================================
-# 1. 配置
+# 1. 批量多楼层配置
 # ==========================================
 PCD_PATH = "/home/dow/maps/356_process_3.pcd"
-MAP_PATH = "/home/dow/DOW/PRM-3D/expMap/35/356_2.png" 
-OUT_PREFIX = "/home/dow/DOW/PRM-3D/tools/navmesh_out"
 
-# --- [新增] 数据保存与加载配置开关 ---
+# 统一输出前缀 (save_path 会自动加上 .npy, .json, _preview.png)
+# read_json: 填入路径则加载配置，留空 "" 则从零开始
+FLOORS_CONFIG = [
+    {
+        "index": 0,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_1.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_1",
+        "read_json": ""
+    },
+    {
+        "index": 1,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_2.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_2",
+        "read_json": ""
+    },
+    {
+        "index": 2,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_3.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_3",
+        "read_json": ""
+    },
+    {
+        "index": 3,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_4.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_4",
+        "read_json": ""
+    },
+    {
+        "index": 4,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_5.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_5",
+        "read_json": ""
+    },
+    {
+        "index": 5,
+        "map": "/home/dow/DOW/PRM-3D/expMap/35_all/356_6.png",
+        "save_path": "/home/dow/DOW/PRM-3D/expMap/35_all/356_6",
+        "read_json": ""
+    }
+]
+
+# --- 数据保存配置 ---
 SAVE_PNG = False
 SAVE_JSON = True
-# 若要读取进度，请填入完整 json 路径，例如: "/home/dow/DOW/PRM-3D/tools/navmesh_out.json"
-# 留空 "" 则表示从零开始全新创建
-LOAD_JSON_PATH = "" 
 
 # 全局原点与分辨率参数
 RES, OX, OY = 0.05, -15.471, -7.330     
 
 Z_STEP, Z_BIG = 0.02, 0.10   
 DISPLAY_SCALE = 3            
+VOXEL_SIZE = 0.05
 
 KEY_Z_UP, KEY_Z_DN = ord("w"), ord("s")        
 KEY_Z_UP2, KEY_Z_DN2 = ord("e"), ord("x")      
@@ -103,9 +141,9 @@ class NavMeshState:
             self.dirty3d = True
 
 class Viewer3D(threading.Thread):
-    def __init__(self, pcd_xyz, state):
+    def __init__(self, global_pcd_xyz, state):
         super().__init__(daemon=True)
-        self.pcd_xyz = pcd_xyz
+        self.global_pcd_xyz = global_pcd_xyz
         self.state = state
 
     def run(self):
@@ -113,15 +151,15 @@ class Viewer3D(threading.Thread):
         o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
         vis = o3d.visualization.Visualizer()
         vis.create_window(WIN3D, 1100, 800)
-        
-        p = self.pcd_xyz
-        h = (p[:, 2] - p[:, 2].min()) / max(np.ptp(p[:, 2]), 1e-6)
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(p)
-        bgr = cv2.applyColorMap((np.clip(h, 0, 1) * 255).astype(np.uint8).reshape(-1, 1), cv2.COLORMAP_VIRIDIS).reshape(-1, 3)
-        colors = bgr[:, ::-1].astype(np.float64) / 255.0
-        pcd.colors = o3d.utility.Vector3dVector(0.3 * colors) 
-        vis.add_geometry(pcd)
+
+        # 静态全局背景层
+        pcd_bg = o3d.geometry.PointCloud()
+        if self.global_pcd_xyz is not None and len(self.global_pcd_xyz) > 0:
+            pcd_bg.points = o3d.utility.Vector3dVector(self.global_pcd_xyz)
+            h = (self.global_pcd_xyz[:, 2] - self.global_pcd_xyz[:, 2].min()) / max(np.ptp(self.global_pcd_xyz[:, 2]), 1e-6)
+            bgr = cv2.applyColorMap((np.clip(h, 0, 1) * 255).astype(np.uint8).reshape(-1, 1), cv2.COLORMAP_VIRIDIS).reshape(-1, 3)
+            pcd_bg.colors = o3d.utility.Vector3dVector(0.3 * bgr[:, ::-1].astype(np.float64) / 255.0)
+            vis.add_geometry(pcd_bg)
 
         mesh = o3d.geometry.TriangleMesh()
         line = o3d.geometry.LineSet()
@@ -151,12 +189,11 @@ class Viewer3D(threading.Thread):
                     line.points = o3d.utility.Vector3dVector(v_data)
                     
                     if len(f_data) > 0:
-                        # 【修复 1】强制构建双面网格解决背向导致无颜色的问题
                         faces_list = f_data.tolist()
                         double_sided_faces = []
                         for f in faces_list:
                             double_sided_faces.append([f[0], f[1], f[2]])
-                            double_sided_faces.append([f[0], f[2], f[1]]) # 反向法线
+                            double_sided_faces.append([f[0], f[2], f[1]]) 
                             
                         mesh.triangles = o3d.utility.Vector3iVector(double_sided_faces)
                         mesh.paint_uniform_color([0.88, 0.12, 0.10])
@@ -187,32 +224,58 @@ class Viewer3D(threading.Thread):
 # ==========================================
 # 4. 2D 交互界面
 # ==========================================
-class NavMeshEditor2D:
-    def __init__(self, map_img, out_prefix, state):
-        self.img = map_img
-        self.out = out_prefix
+class BatchNavMeshEditor2D:
+    def __init__(self, state):
         self.state = state
-        self.H, self.W = map_img.shape
+        self.current_floor_idx = 0
+
+        cv2.namedWindow(WIN2D, cv2.WINDOW_AUTOSIZE)
+        cv2.setMouseCallback(WIN2D, self.on_mouse)
         
+        self.load_floor_data()
+
+    def load_floor_data(self):
+        floor_config = FLOORS_CONFIG[self.current_floor_idx]
+        self.map_path = floor_config["map"]
+        
+        raw_save_path = floor_config["save_path"]
+        self.out_prefix = os.path.splitext(raw_save_path)[0] # 去除可能误填的扩展名
+        
+        read_json_path = floor_config.get("read_json", "")
+        
+        print(f"\n{'='*50}")
+        print(f"[流水线] 正在加载地图 {self.current_floor_idx+1}/{len(FLOORS_CONFIG)}: {os.path.basename(self.map_path)}")
+        
+        self.img = cv2.imread(self.map_path, cv2.IMREAD_GRAYSCALE)
+        if self.img is None:
+            print(f"[错误] 无法加载地图 {self.map_path}，跳过此层。")
+            self.next_floor()
+            return
+            
+        self.H, self.W = self.img.shape
+        
+        # 状态重置
         self.vertices = []  
         self.faces = []     
         self.selected_indices = [] 
-        
-        self.dragging_idx = None # 记录当前正在中键拖拽的节点索引
+        self.dragging_idx = None
 
-        # 【修复 2】加载历史进度
-        if LOAD_JSON_PATH and os.path.exists(LOAD_JSON_PATH):
-            print(f"[配置] 正在加载历史 JSON 进度: {LOAD_JSON_PATH}")
+        # 根据独立开关决定是否读取旧进度
+        if read_json_path and os.path.exists(read_json_path):
+            print(f"[配置] 发现 read_json 指令，正在加载进度: {read_json_path}")
             try:
-                with open(LOAD_JSON_PATH, 'r') as f:
+                with open(read_json_path, 'r') as f:
                     data = json.load(f)
                     self.vertices = [np.array(v) for v in data.get('vertices', [])]
                     self.faces = data.get('faces', [])
             except Exception as e:
                 print(f"[错误] 解析 JSON 失败: {e}")
+        else:
+            if read_json_path:
+                print(f"[提示] 指定的 read_json 文件不存在，将从零开始: {read_json_path}")
+            else:
+                print(f"[配置] read_json 为空，开启全新画布。")
 
-        cv2.namedWindow(WIN2D, cv2.WINDOW_AUTOSIZE)
-        cv2.setMouseCallback(WIN2D, self.on_mouse)
         self.recompute()
 
     def recompute(self):
@@ -224,7 +287,6 @@ class NavMeshEditor2D:
         mx, my = x / DISPLAY_SCALE, y / DISPLAY_SCALE
         u, v = float(mx), float(self.H - 1 - my)
         
-        # 寻找最近的节点
         closest_idx = None
         if self.vertices:
             pts = np.array(self.vertices)[:, :2]
@@ -233,8 +295,7 @@ class NavMeshEditor2D:
             if dists[min_idx] < 3.0: 
                 closest_idx = min_idx
 
-        # --- 【交互重构】 ---
-        # 1. 鼠标左键：纯粹用作选中/取消选中
+        # --- 左键负责选中和创建 ---
         if event == cv2.EVENT_LBUTTONDOWN:
             if closest_idx is not None:
                 if closest_idx in self.selected_indices:
@@ -246,41 +307,32 @@ class NavMeshEditor2D:
                         self.selected_indices.pop(0)
                         self.selected_indices.append(closest_idx)
             else:
-                self.selected_indices.clear()
+                px_x, px_y = int(mx), int(my)
+                if 0 <= px_x < self.W and 0 <= px_y < self.H:
+                    if self.img[px_y, px_x] > 128:
+                        new_z = self.vertices[self.selected_indices[-1]][2] if self.selected_indices else 0.0
+                        self.vertices.append(np.array([u, v, new_z]))
+                        new_idx = len(self.vertices) - 1
+                        
+                        if len(self.selected_indices) >= 3:
+                            self.selected_indices.pop(0)
+                        self.selected_indices.append(new_idx)
+                    else:
+                        print("[限制] 只能在白色可行驶区域添加节点！")
             self.recompute()
             
-        # 2. 鼠标右键：专职在空地创建节点
-        elif event == cv2.EVENT_RBUTTONDOWN:
-            px_x, px_y = int(mx), int(my)
-            if 0 <= px_x < self.W and 0 <= px_y < self.H:
-                if self.img[px_y, px_x] > 128:
-                    new_z = self.vertices[self.selected_indices[-1]][2] if self.selected_indices else 0.0
-                    self.vertices.append(np.array([u, v, new_z]))
-                    new_idx = len(self.vertices) - 1
-                    
-                    if len(self.selected_indices) >= 3:
-                        self.selected_indices.pop(0)
-                    self.selected_indices.append(new_idx)
-                    self.recompute()
-                else:
-                    print("[限制] 只能在白色可行驶区域添加节点！")
-
-        # 3. 鼠标中键按住：进入拖动状态
         elif event == cv2.EVENT_MBUTTONDOWN:
             if closest_idx is not None:
                 self.dragging_idx = closest_idx
                 
-        # 4. 鼠标移动：实现拖拽平滑更新
         elif event == cv2.EVENT_MOUSEMOVE:
             if self.dragging_idx is not None:
                 px_x, px_y = int(mx), int(my)
-                # 严格限制：拖动依然不能越界，不能拉进黑色墙壁里
                 if 0 <= px_x < self.W and 0 <= px_y < self.H and self.img[px_y, px_x] > 128:
                     self.vertices[self.dragging_idx][0] = u
                     self.vertices[self.dragging_idx][1] = v
                     self.recompute()
                     
-        # 5. 鼠标中键松开：结束拖拽
         elif event == cv2.EVENT_MBUTTONUP:
             self.dragging_idx = None
 
@@ -327,7 +379,10 @@ class NavMeshEditor2D:
         canvas[0:self.H * DISPLAY_SCALE, 0:canvas_w] = frame
         cv2.rectangle(canvas, (0, self.H * DISPLAY_SCALE), (canvas_w, canvas_h), (30, 30, 30), -1)
 
-        bar1 = "LMB: Select | RMB: Add | MMB: Drag | x/del: Del | f: Face | p: Save | q: Quit"
+        # 进度与状态提示
+        current_map_name = os.path.basename(FLOORS_CONFIG[self.current_floor_idx]["map"])
+        bar1 = f"Map {self.current_floor_idx+1}/{len(FLOORS_CONFIG)}: {current_map_name} | p: Save & Next Map | q: Quit"
+        
         if len(self.selected_indices) == 1:
             idx = self.selected_indices[0]
             v = self.vertices[idx]
@@ -335,10 +390,10 @@ class NavMeshEditor2D:
         elif len(self.selected_indices) == 3:
             bar2 = "3 points selected! Press 'f' to create a face."
         else:
-            bar2 = f"{len(self.selected_indices)} points selected."
+            bar2 = f"LMB: Add/Sel | MMB: Drag | c: Clear Sel | x/del: Del | f: Face"
             
-        cv2.putText(canvas, bar1, (6, self.H*DISPLAY_SCALE + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(canvas, bar2, (6, self.H*DISPLAY_SCALE + 48), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, bar1, (6, self.H*DISPLAY_SCALE + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, bar2, (6, self.H*DISPLAY_SCALE + 48), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 255, 255), 1, cv2.LINE_AA)
         cv2.imshow(WIN2D, canvas)
 
     def adjust_z(self, dz):
@@ -353,6 +408,10 @@ class NavMeshEditor2D:
         elif key == KEY_Z_UP2: self.adjust_z(+Z_BIG)
         elif key == KEY_Z_DN2: self.adjust_z(-Z_BIG)
         
+        elif key == ord("c"):
+            self.selected_indices.clear()
+            self.recompute()
+            
         elif key == ord("f"):
             if len(self.selected_indices) == 3:
                 new_face = tuple(sorted(self.selected_indices))
@@ -386,67 +445,90 @@ class NavMeshEditor2D:
                 print("[删除] 节点及其关联的面已彻底删除！")
                 self.recompute()
                 
-        elif key == ord("p"): self.save()
+        elif key == ord("p"): self.save_and_next()
         elif key in (ord("q"), 27): return False
         return True
 
-    def save(self):
+    def save_and_next(self):
         if not self.faces:
-            print("[保存] 当前没有面，保存的数据将为空。")
-            
-        print("[生成中] 正在烘焙网格并执行保存任务...")
-        final_grid = bake_triangles_to_grid(self.vertices, self.faces, self.W, self.H)
+            print("[警告] 当前地图没有创建任何面，将保存为空的(NaN)高程图。")
+            final_grid = np.full((self.W, self.H), np.nan)
+        else:
+            print("[生成中] 正在烘焙手工 NavMesh ...")
+            final_grid = bake_triangles_to_grid(self.vertices, self.faces, self.W, self.H)
         
-        # 无论如何保存 .npy (可能是空矩阵，方便下游清空状态)
-        np.save(self.out + ".npy", final_grid)
-        print(f"[保存成功] 生成 {self.out}.npy")
+        # 1. 保存 NPY
+        npy_path = self.out_prefix + ".npy"
+        np.save(npy_path, final_grid)
+        print(f"[保存成功] 生成 {npy_path}")
         
-        # 【修复 2】按照配置开关执行额外的保存
+        # 2. 保存 JSON 供后续重新读取编辑
         if SAVE_JSON:
+            json_path = self.out_prefix + ".json"
             json_data = {
                 "vertices": [[float(val) for val in pt] for pt in self.vertices],
                 "faces": self.faces
             }
-            with open(self.out + ".json", 'w') as f:
+            with open(json_path, 'w') as f:
                 json.dump(json_data, f, indent=2)
-            print(f"[保存成功] 写入 {self.out}.json")
+            print(f"[保存成功] 写入 {json_path}")
             
+        # 3. 保存 PNG 预览
         if SAVE_PNG:
             z = final_grid[np.isfinite(final_grid)]
+            preview_path = self.out_prefix + "_preview.png"
             if len(z) > 0:
                 z0, z1 = float(z.min()), float(z.max())
                 prev = np.where(np.isfinite(final_grid), (final_grid - z0) / max(z1 - z0, 1e-6) * 255, 0).astype(np.uint8).T
-                cv2.imwrite(self.out + "_preview.png", cv2.applyColorMap(prev, cv2.COLORMAP_VIRIDIS))
-                print(f"[保存成功] 渲染 {self.out}_preview.png")
+                cv2.imwrite(preview_path, cv2.applyColorMap(prev, cv2.COLORMAP_VIRIDIS))
+            else:
+                cv2.imwrite(preview_path, np.zeros((self.H, self.W, 3), dtype=np.uint8))
+            print(f"[保存成功] 渲染 {preview_path}")
+
+        # 切图
+        self.next_floor()
+
+    def next_floor(self):
+        if self.current_floor_idx < len(FLOORS_CONFIG) - 1:
+            self.current_floor_idx += 1
+            self.load_floor_data()
+        else:
+            print("\n" + "="*50)
+            print("[完毕] 所有楼层地图的手工铺设已处理完毕！您现在可以按 'q' 退出程序。")
+            print("="*50)
 
     def run(self):
-        while self.state.running:
-            self.draw()
-            key = cv2.waitKeyEx(30)
-            if key == -1: continue
-            if not self.on_key(key): break
-        self.state.running = False
+        try:
+            while self.state.running:
+                self.draw()
+                key = cv2.waitKeyEx(30)
+                if key == -1: continue
+                if not self.on_key(key): break
+        except KeyboardInterrupt:
+            print("\n[退出] 接收到中断信号，正在安全退出...")
+            self.state.running = False
+            
         cv2.destroyAllWindows()
+
 
 # ==========================================
 # 5. 主流程
 # ==========================================
 def main():
-    map_img = cv2.imread(MAP_PATH, cv2.IMREAD_GRAYSCALE)
-    if map_img is None: 
-        sys.exit(f"地图读取失败, 请检查路径是否正确: {MAP_PATH}")
-
     import open3d as o3d
-    print(f"[加载] 正在读取点云 {PCD_PATH} 用于背景参考...")
-    try:
-        pcd_pts = np.asarray(o3d.io.read_point_cloud(PCD_PATH).points)
-    except Exception as e:
-        sys.exit(f"点云读取失败，请检查路径是否正确: {PCD_PATH}\n错误信息: {e}")
+    print(f"[加载] 正在读取全局点云 {PCD_PATH} (整个过程只加载一次)...")
+    if not os.path.exists(PCD_PATH):
+        sys.exit(f"点云文件不存在: {PCD_PATH}")
+        
+    pcd = o3d.io.read_point_cloud(PCD_PATH)
+    # 稍微降采样可以让 3D 渲染更顺滑
+    pcd = pcd.voxel_down_sample(voxel_size=VOXEL_SIZE) 
+    global_pcd_pts = np.asarray(pcd.points)
 
     state = NavMeshState()
-    Viewer3D(pcd_pts, state).start()
+    Viewer3D(global_pcd_pts, state).start()
     
-    gui = NavMeshEditor2D(map_img, OUT_PREFIX, state)
+    gui = BatchNavMeshEditor2D(state)
     gui.run()
 
 if __name__ == "__main__":

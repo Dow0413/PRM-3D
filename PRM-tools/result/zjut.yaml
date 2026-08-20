@@ -1,0 +1,33 @@
+global:
+  pcd_path: "/home/dow/maps/zjut.pcd"
+  resolution: 0.05
+  voxel_size: 0.05
+  max_2d_win_size: 800
+  origin_x: null
+  origin_y: null
+
+floors:
+  - index: 0
+    name: "floor_1"
+    map_png: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_1.png"
+    map_yaml: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_1.yaml"
+    elevation_npy: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_1.npy"
+    z_min: null
+    z_max: null
+  - index: 1
+    name: "floor_2"
+    map_png: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_2.png"
+    map_yaml: ""
+    elevation_npy: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_2.npy"
+    z_min: null
+    z_max: null
+  - index: 2
+    name: "floor_3"
+    map_png: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_3.png"
+    map_yaml: ""
+    elevation_npy: "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_3.npy"
+    z_min: null
+    z_max: null
+
+outputs:
+  connections_json: "/home/dow/DOW/PRM-3D/expMap/zjut/connections.json"

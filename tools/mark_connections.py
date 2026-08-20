@@ -70,13 +70,18 @@ C_MANUAL = (255, 0, 255)    # 手动补点（品红）
 #     "/home/dow/DOW/PRM-3D/expMap/r2_1.png",
 #     "/home/dow/DOW/PRM-3D/expMap/r2_2.png"
 # ]
+# DEFAULT_MAPS = [
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_1.png",
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_2.png",
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_3.png",
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_4.png",
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_5.png",
+#     "/home/dow/DOW/PRM-3D/expMap/35_all/356_6.png"
+# ]
 DEFAULT_MAPS = [
-    "/home/dow/DOW/PRM-3D/expMap/35/356_1.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_2.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_3.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_4.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_5.png",
-    "/home/dow/DOW/PRM-3D/expMap/35/356_6.png"
+    "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_1.png",
+    "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_2.png",
+    "/home/dow/DOW/PRM-3D/expMap/zjut/zjut_3.png"
 ]
 
 def free_mask(gray):
@@ -375,7 +380,7 @@ def main():
                     help="候选连通域最小面积，用于滤噪")
     ap.add_argument("--eps", type=float, default=1.5,
                     help="多边形轮廓简化阈值(approxPolyDP)，0=逐像素原始轮廓")
-    ap.add_argument("--out", default="connections35.json",
+    ap.add_argument("--out", default="connectionszjut_all.json",
                     help="输出 JSON 路径")
     ap.add_argument("--headless", action="store_true",
                     help="只打印候选并退出，不弹窗")
