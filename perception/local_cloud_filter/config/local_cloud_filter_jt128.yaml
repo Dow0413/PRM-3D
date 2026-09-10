@@ -1,0 +1,49 @@
+local_cloud_filter_node:  # 参数所属节点名，需与 launch 中启动的 local_cloud_filter_node 对应。
+  ros__parameters:  # ROS 2 参数命名空间。
+    # input_cloud_topic: "/front/rslidar_points"  # 备选输入点云话题，通常为 rslidar 驱动直接发布的原始点云。
+    input_cloud_topic: "/front/lidar_points"  # 输入点云话题，节点订阅该 PointCloud2 数据。
+    output_cloud_topic: "/local_cloud_map"  # 输出点云话题，发布过滤和降采样后的局部点云。
+
+    target_frame: "map"  # 输出点云最终转换到的目标坐标系。
+    # base_frame: "body"  # 备选机器人本体坐标系，用于兼容发布 body 坐标系的定位/SLAM。
+    base_frame: "base_link"  # 局部滤波使用的机器人本体坐标系，输入点云会先转换到该坐标系。
+
+    queue_size: 10  # 点云订阅和发布队列长度。
+    tf_timeout_sec: 0.1  # 查询 TF 变换的超时时间，单位为秒。
+
+    crop_min_x: -3.0  # 裁剪框 X 轴下界，单位米，坐标系为 base_frame。
+    crop_max_x: 6.0  # 裁剪框 X 轴上界，单位米，坐标系为 base_frame。
+    crop_min_y: -4.0  # 裁剪框 Y 轴下界，单位米，坐标系为 base_frame。
+    crop_max_y: 4.0  # 裁剪框 Y 轴上界，单位米，坐标系为 base_frame。
+    crop_min_z: -1.0  # 裁剪框 Z 轴下界，单位米，坐标系为 base_frame。
+    crop_max_z: 2.0  # 裁剪框 Z 轴上界，单位米，坐标系为 base_frame。
+
+    height_min_z: -0.5  # 高度过滤 Z 轴下界，低于该高度的点会被移除。
+    height_max_z: 1.0  # 高度过滤 Z 轴上界，高于该高度的点会被移除。
+
+    self_filter_min_x: -0.6  # 自车过滤框 X 轴下界，框内点会被认为是车体点并移除。
+    self_filter_max_x: 0.6  # 自车过滤框 X 轴上界，框内点会被认为是车体点并移除。
+    self_filter_min_y: -0.4  # 自车过滤框 Y 轴下界，框内点会被认为是车体点并移除。
+    self_filter_max_y: 0.4  # 自车过滤框 Y 轴上界，框内点会被认为是车体点并移除。
+    self_filter_min_z: -0.3  # 自车过滤框 Z 轴下界，框内点会被认为是车体点并移除。
+    self_filter_max_z: 0.8  # 自车过滤框 Z 轴上界，框内点会被认为是车体点并移除。
+
+    sensor_artifact_min_x: 0.22  # 雷达坐标系近场假点排除盒 X 下界，单位米。
+    sensor_artifact_max_x: 0.37  # 雷达坐标系近场假点排除盒 X 上界，单位米。
+    sensor_artifact_min_y: -0.08  # 雷达坐标系近场假点排除盒 Y 下界，单位米。
+    sensor_artifact_max_y: 0.08  # 雷达坐标系近场假点排除盒 Y 上界，单位米。
+    sensor_artifact_min_z: 0.23  # 雷达坐标系近场假点排除盒 Z 下界，用于滤掉雷达斜上方约 0.45m 杂点。
+    sensor_artifact_max_z: 0.37  # 雷达坐标系近场假点排除盒 Z 上界，用于滤掉雷达斜上方约 0.45m 杂点。
+    
+    near_noise_radius: 0.8  # 近距离稀疏噪声检测半径，单位米，只检查雷达原点附近的点。
+    near_noise_search_radius: 0.05  # 近距离噪声邻居搜索半径，单位米。
+    near_noise_min_neighbors: 10  # 近距离点在搜索半径内至少需要的邻居数，低于该值会被移除。
+
+    voxel_leaf_size: 0.10  # 体素降采样叶子尺寸，单位米。
+
+    enable_crop_filter: true  # 是否启用裁剪框过滤。
+    enable_height_filter: true  # 是否启用高度过滤。
+    enable_self_filter: true  # 是否启用自车过滤。
+    enable_sensor_artifact_filter: true  # 是否启用雷达坐标系近场假点排除盒。
+    enable_near_noise_filter: false  # 是否启用近距离稀疏噪声过滤。
+    enable_voxel_filter: true  # 是否启用体素降采样。

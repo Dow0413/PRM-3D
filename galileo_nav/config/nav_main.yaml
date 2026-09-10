@@ -1,0 +1,30 @@
+# nav_main.launch.py 的默认选择器配置（精简工作区版）。
+# 启动命令里传入的非空 launch 参数会覆盖这里的同名值。
+
+use_sim_time: false # 是否使用仿真时钟 /clock。
+global: "prm" # 全局规划器（本工作区仅 wire 了 prm）。
+local: "cmu" # 局部规划器：cmu / replan / wzh。
+mode: "sim" # 运行模式：real 读取真机参数， sim 读取仿真参数；仿真后端需单独启动。
+kinematic_model: "original" # CMU 运动学模型：original 全向/四足风格，vehicle 车型约束。
+
+# 辅助节点和规划器之间共享的约定话题。
+global_path_topic: "/global_path" # 全局规划器输出、局部规划器输入的 Path 话题。
+localization_odom_topic: "/Odometry" # 定位输出的原始里程计话题。
+cmu_odom_topic: "/state_estimation" # CMU 适配后的里程计话题，供桥接和 CMU 局部链路使用。
+waypoint_topic: "/way_point" # 当前局部目标点话题，由 path_to_waypoint 发布。
+pose_goal_topic: "/goal_pose" # PoseStamped 目标话题，供 PRM 全局规划器订阅。
+output_cmd_vel_topic: "/galileo/cmd_vel" # 最终输出给底盘的 Twist 话题。
+cmd_vel_nav_topic: "/cmd_vel_nav" # 开启速度后处理时，CMU/mux 原始速度先输出到这里。
+map_name: "galileo_all" # 当前地图名，选择 local_replan.yaml / local_wzh.yaml 里 maps.<map_name> 段。
+replan_service: "/replan_plan" # local_replan/wzh 触发重规划时调用的全局规划服务。
+
+# 平台对接与通用状态日志。
+start_platform_bridge: false # platform_nav_bridge 不在本工作区，固定关闭。
+start_topic_state_logger: false # 是否启动 topic_state_logger（每秒刷屏，排障时才开）。
+
+# local:=cmu 时的公共桥接链路：Action -> global_path -> CMU waypoint -> final yaw align -> cleanup。
+enable_path_to_waypoint: true # 是否启动 /global_path 到 CMU /way_point 的桥接节点。
+enable_cmu_start_gate: true # 是否启动 CMU 起步/到达停止门控节点。
+enable_cmd_vel_bridge: true # 是否启动 CMU TwistStamped->Twist 桥接和 cmd_vel_mux。
+enable_cmd_vel_postprocessor: false # 是否启用 /cmd_vel_nav -> /cmd_vel 的速度 PID 补偿与约束链路。
+final_goal_tolerance: 0.4 # 统一终点位置容差，单位 m。

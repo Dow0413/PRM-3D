@@ -1,0 +1,56 @@
+# cmd_vel_postprocessor.launch.py 的默认参数。
+# 启动命令里传入的非空 launch 参数会覆盖这里的同名值。
+
+cmd_vel_postprocessor:
+  ros__parameters:
+    enabled: true # 是否实际执行后处理；false 时仅透传 input_topic 到 output_topic。
+    input_topic: "/cmd_vel_nav" # 后处理输入 Twist 话题。
+    output_topic: "/cmd_vel" # 后处理输出给底盘桥接/仿真底盘的 Twist 话题。
+    odom_topic: "/Odometry" # 用于速度 PID 反馈的里程计话题。
+    use_sim_time: false # 是否使用仿真时钟 /clock。
+
+    control_rate: 30.0 # 固定后处理频率，单位 Hz。
+    command_timeout_sec: 0.5 # /cmd_vel_nav 超时后输出零速度；<=0 表示不检查。
+    odom_timeout_sec: 0.5 # 实际速度反馈超时时间；超时后默认跳过 PID，仅走前馈和约束。
+    publish_zero_on_cmd_timeout: true # 目标速度超时时是否发布零速度。
+    preserve_unprocessed_axes: true # 是否保留 linear.y/z 和 angular.x/y。
+    zero_epsilon: 0.00001 # 零速度/符号判断阈值。
+    log_throttle_sec: 2.0 # 重复告警节流时间，单位 s。
+
+    enable_reachability_limit: true # 速度可达性限制：根据实际速度和可达加速度先夹紧目标速度。
+    reachable_linear_accel: 0.6 # 目标线速度可达加速度，单位 m/s^2。
+    reachable_angular_accel: 1.2 # 目标角速度可达加速度，单位 rad/s^2。
+
+    enable_pi_compensation: true # 是否启用 PID 速度补偿；参数名为兼容旧配置保留 PI。
+    require_fresh_odom_for_pi: true # 里程计速度新鲜时才叠加 PID，避免反馈失效时误补偿。
+    use_last_output_when_odom_stale: true # 里程计超时时，可达性限制临时使用上一次输出作为速度估计。
+    feedforward_linear_gain: 1.0 # 线速度前馈比例。
+    feedforward_angular_gain: 1.0 # 角速度前馈比例。
+    linear_kp: 0.1 # 线速度 P 增益；建议真机小步调参。
+    linear_ki: 0.0 # 线速度 I 增益；建议从 0 开始逐步增加。
+    linear_kd: 0.0 # 线速度 D 增益；对速度误差变化率做阻尼，通常从 0 开始。
+    angular_kp: 0.05 # 角速度 P 增益。
+    angular_ki: 0.0 # 角速度 I 增益。
+    angular_kd: 0.0 # 角速度 D 增益；反馈噪声大时不要加太多。
+    linear_integral_limit: 0.5 # 线速度积分状态限幅。
+    angular_integral_limit: 0.8 # 角速度积分状态限幅。
+    linear_error_deadband: 0.01 # 线速度误差死区，单位 m/s。
+    angular_error_deadband: 0.02 # 角速度误差死区，单位 rad/s。
+    reset_integral_on_target_sign_change: true # 目标速度换向时清空积分，减少反向冲击。
+
+    enable_accel_limit: true # 是否启用输出线加速度/角加速度限制。
+    max_linear_accel: 0.5 # 最大线加速度，单位 m/s^2。
+    max_linear_decel: 0.8 # 最大线减速度，单位 m/s^2。
+    max_angular_accel: 1.2 # 最大角加速度，单位 rad/s^2。
+    max_angular_decel: 1.8 # 最大角减速度，单位 rad/s^2。
+
+    enable_max_velocity_limit: true # 是否启用最大速度限制。
+    max_linear_speed: 1.0 # 最大前进线速度，单位 m/s。
+    max_reverse_speed: 0.5 # 最大后退线速度，单位 m/s。
+    max_angular_speed: 0.872665 # 最大角速度，单位 rad/s。
+
+    enable_min_turning_radius: true # 是否启用最小回转半径约束。
+    min_turning_radius: 0.5 # 最小回转半径，约束 |v_x| / |w_z| >= 该值。
+    min_turning_linear_speed: 0.2 # 转弯时线速度地板，单位 m/s。
+    allow_in_place_rotation: false # false 时禁止原地旋转。
+    turning_radius_epsilon: 0.000001 # 回转半径计算阈值。

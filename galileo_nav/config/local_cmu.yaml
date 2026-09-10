@@ -1,0 +1,263 @@
+# galileo_nav/local_cmu.launch.py 使用的 CMU 局部规划栈参数。
+#
+# 这份配置把实际运行的 CMU 本地链路整理成独立模块，结构与
+# pcd_nav_sim 仿真链路保持一致。/global_path -> /way_point 桥接参数
+# 已拆到 config/path_to_waypoint.yaml：
+#   /global_path -> path_to_waypoint.launch.py -> /way_point,/speed
+#   CMU localPlanner -> /cmu/path -> pathFollower -> /cmu/cmd_vel_stamped
+#   twist_stamped_to_twist -> /cmd_vel/cmu
+#   path_to_waypoint 终点调姿 -> /cmd_vel/final_align
+#   cmd_vel_mux -> /cmd_vel
+#
+# 下方参数从 galileo_pcd_nav_sim/config/pcd_nav_sim.yaml 中筛出。
+# 地图、虚拟机器人、PCD 点云生成等仿真专用参数仍保留在 pcd_nav_sim.yaml；
+# 真机 CMU 运行链路需要维护的参数集中放在这里。
+# 通用参数写在 common，真机/仿真差异分别写在 real 和 sim。
+# 运动学模型差异写在 kinematic_models，通过 kinematic_model 选择。
+# CMU 速度参数统一放在 kinematic_models；real/sim 不再单独覆盖速度，只保留运行环境差异。
+
+kinematic_model: "original"                   # 默认运动学模型；nav_main/local_cmu 可用 kinematic_model:=vehicle 覆盖。
+
+common:
+  cmu_start_gate:
+    ros__parameters:
+      waypoint_topic: "/way_point"            # 起步门控监听的当前 CMU 目标点话题。
+      global_path_topic: "/global_path"       # 起步门控监听的全局路径话题。
+      odom_topic: "/state_estimation"         # 起步/到达判定使用的 CMU 里程计。
+      stop_topic: "/stop"                     # 输出给 CMU 的停止/释放话题。
+      stop_value: 2                           # 保持停止状态时发布的值。
+      release_value: 0                        # 释放运行时发布的值。
+      publish_rate: 10.0                      # stop/release 状态发布频率，单位 Hz。
+      min_path_points: 2                      # 判定全局路径有效所需的最少点数。
+      release_publish_duration: 2.0           # 新目标后持续发布释放状态的时间，单位 s。
+      goal_reached_tolerance: 0.1            # 进入该距离阈值后重新进入停止状态，单位 m。
+      new_goal_epsilon: 0.05                  # 新目标去重距离阈值，单位 m。
+      stop_on_goal: false                      # 到达最终目标后是否重新停止 CMU。
+      ignore_reached_goal_repeats: true       # 已在到达半径内时，忽略重复目标释放。
+      ignore_cancelled_path_refresh: false    # cancel/stop 后收到相同路径时仍允许重新释放。
+
+  cmu_cmd_to_cmd_vel:
+    ros__parameters:
+      input_topic: "/cmu/cmd_vel_stamped"     # CMU pathFollower 输出的 TwistStamped 话题。
+      output_topic: "/cmd_vel/cmu"            # 常规 CMU 速度通道，进入 cmd_vel_mux。
+      drop_zero_twist: false                  # 保留零速度，确保到达/停止时底盘立即停车。
+      zero_epsilon: 0.000001                  # 判断 Twist 为零的阈值。
+      enable_odom_watchdog: false             # 是否启用里程计健康监控；真机段会覆盖为 true。
+      odom_topic: "/state_estimation"         # watchdog 使用的里程计话题。
+      odom_timeout_sec: 0.5                   # 里程计超时时间，单位 s。
+      odom_jump_distance_threshold: 1.0       # 单帧位置跳变阈值，单位 m。
+      odom_jump_yaw_threshold: 1.0            # 单帧 yaw 跳变阈值，单位 rad。
+      odom_jump_recovery_sec: 5.0             # 跳变后恢复观察时间，单位 s。
+      odom_stale_timeout_sec: 1.0             # 位姿长时间不变时触发停车的时间，单位 s。
+      odom_stale_position_epsilon: 0.001      # 静止检测的位置变化阈值。
+      odom_stale_yaw_epsilon: 0.001           # 静止检测的 yaw 变化阈值。
+      publish_zero_on_odom_error: true        # watchdog 异常时是否持续发布零速度。
+      zero_publish_rate: 5.0                  # watchdog 异常时零速度发布频率，单位 Hz。
+      log_throttle_sec: 2.0                   # watchdog 日志节流时间，单位 s。
+
+  cmd_vel_mux:
+    ros__parameters:
+      fallback_topic: "/cmd_vel/cmu"          # CMU 常规速度输入。
+      override_topic: "/cmd_vel/final_align"  # 终点姿态对齐速度输入，短时间优先。
+      output_topic: "/cmd_vel"                # 最终输出给底盘桥接/仿真底盘的 Twist 话题。
+      override_timeout_sec: 0.35              # final_align 最近一次消息后的优先保持时间，单位 s。
+
+  terrainAnalysis:
+    ros__parameters:
+      scanVoxelSize: 0.05                     # 输入点云/内部点云降采样体素尺寸，单位 m。
+      decayTime: 2.0                          # 地形缓存点衰减时间，单位 s。
+      noDecayDis: 0.0                         # 距机器人小于该距离的点不按时间衰减，单位 m。
+      clearingDis: 8.0                        # /map_clearing 清除作用半径，单位 m。
+      useSorting: true                        # 是否用分位数估计地面高度；false 时用最低点。
+      quantileZ: 0.25                         # useSorting 为 true 时的地面高度分位数。
+      considerDrop: false                     # 是否把低于估计地面的落差也视作障碍。
+      limitGroundLift: false                  # 是否限制地面高度相对最低点的抬升。
+      maxGroundLift: 0.15                     # 地面高度最大抬升量，单位 m。
+      clearDyObs: false                       # 是否启用动态障碍视线清除。
+      minDyObsDis: 0.3                        # 动态障碍清除的最小距离，单位 m。
+      minDyObsAngle: 0.0                      # 动态障碍清除的最小角度阈值，单位 deg。
+      minDyObsRelZ: -0.5                      # 动态障碍清除参考相对高度，单位 m。
+      absDyObsRelZThre: 0.2                   # 近水平动态障碍清除高度阈值，单位 m。
+      minDyObsVFOV: -16.0                     # 动态障碍清除垂直视场下界，单位 deg。
+      maxDyObsVFOV: 16.0                      # 动态障碍清除垂直视场上界，单位 deg。
+      minDyObsPointNum: 1                     # 判定动态障碍清除所需最少点数。
+      noDataObstacle: false                   # 是否把无数据区域当作障碍。
+      noDataBlockSkipNum: 0                   # 无数据障碍膨胀/跳过层数。
+      minBlockPointNum: 20                    # 一个地形栅格参与发布所需最少点数。
+      vehicleHeight: 1.5                      # 发布点相对估计地面的最大高度，单位 m。
+      voxelPointUpdateThre: 100               # voxel 累计到该点数后触发更新。
+      voxelTimeUpdateThre: 2.0                # voxel 距上次更新超过该时间后触发更新，单位 s。
+      minRelZ: -1.0                           # 输入/输出点相对机器人高度下界，单位 m。
+      maxRelZ: 0.8                            # 输入/输出点相对机器人高度上界，单位 m。
+      disRatioZ: 0.2                          # 随水平距离放宽相对高度范围的比例。
+
+  terrainAnalysisExt:
+    ros__parameters:
+      scanVoxelSize: 0.1                      # terrain_map_ext 降采样体素尺寸，单位 m。
+      decayTime: 10.0                         # 扩展地形缓存衰减时间，单位 s。
+      noDecayDis: 0.0                         # 距机器人小于该距离的点不按时间衰减，单位 m。
+      clearingDis: 30.0                       # 清除作用半径，单位 m。
+      useSorting: false                       # 是否用分位数估计地形高度。
+      quantileZ: 0.1                          # useSorting 为 true 时的地形高度分位数。
+      vehicleHeight: 1.5                      # 输出点相对估计地面的最大高度，单位 m。
+      voxelPointUpdateThre: 100               # voxel 累计到该点数后触发更新。
+      voxelTimeUpdateThre: 2.0                # voxel 距上次更新超过该时间后触发更新，单位 s。
+      lowerBoundZ: -2.5                       # 扩展地形输入相对机器人高度下界，单位 m。
+      upperBoundZ: 1.0                        # 扩展地形输入相对机器人高度上界，单位 m。
+      disRatioZ: 0.1                          # 随水平距离放宽相对高度范围的比例。
+      checkTerrainConn: true                  # 是否检查地形连通性；原 real/garage/forest 默认开启。
+      terrainConnThre: 0.5                    # 地形连通高度差阈值，单位 m。
+      terrainUnderVehicle: -0.75              # 车体下方地形参考高度，单位 m。
+      ceilingFilteringThre: 2.0               # 天花板过滤高度阈值，单位 m。
+      localTerrainMapRadius: 4.0              # 近场 terrain_map 直接融合半径，单位 m。
+
+  localPlanner:
+    ros__parameters:
+      pathFolder: "0_20"                      # CMU 候选路径模板目录，相对 local_planner/paths。
+      searchRadius: 0.20                      # 候选路径碰撞膨胀半径，需要与 pathFolder 匹配，单位 m。
+      vehicleLength: 0.5                      # 车辆长度，单位 m。
+      vehicleWidth: 0.5                       # 车辆宽度，单位 m。
+      sensorOffsetX: 0.0                      # 传感器相对车辆中心 X 偏移，单位 m。
+      sensorOffsetY: 0.0                      # 传感器相对车辆中心 Y 偏移，单位 m。
+      twoWayDrive: false                      # 是否允许前进/倒退双向行驶。
+      laserVoxelSize: 0.05                    # 输入激光点云体素尺寸，单位 m。
+      terrainVoxelSize: 0.1                   # 地形点云体素尺寸，单位 m。
+      useTerrainAnalysis: true                # 是否使用 terrainAnalysis 输出的 /terrain_map。
+      checkObstacle: true                     # 是否进行障碍物检查。
+      checkRotObstacle: false                 # 是否检查原地旋转过程中的障碍。
+      adjacentRange: 4.25                     # 相邻候选路径/点搜索范围，单位 m。
+      obstacleHeightThre: 0.25                # 高于地面该高度视作障碍，单位 m。
+      groundHeightThre: 0.1                   # 地面高度阈值，单位 m。
+      costHeightThre: 0.1                     # 高度代价启用阈值，单位 m。
+      costScore: 0.02                         # 高度代价权重。
+      useCost: false                          # 是否启用代价评分。
+      pointPerPathThre: 4                     # 单条候选路径上的障碍点数量阈值。
+      minRelZ: -0.5                           # 障碍检查相对车辆高度下界，单位 m。
+      maxRelZ: 0.6                            # 障碍检查相对车辆高度上界，单位 m。
+      dirWeight: 0.1                          # 路径方向代价权重。
+      dirThre: 45.0                           # 路径方向阈值，单位 deg。
+      dirToVehicle: false                     # 是否按车辆朝向计算方向代价。
+      pathScale: 1.25                         # 候选路径初始缩放比例。
+      minPathScale: 0.75                      # 候选路径最小缩放比例。
+      pathScaleStep: 0.25                     # 候选路径缩放步长。
+      pathScaleBySpeed: true                  # 是否按速度调整路径缩放。
+      minPathRange: 1.0                       # 候选路径最小使用长度，单位 m。
+      pathRangeStep: 0.5                      # 候选路径长度调整步长，单位 m。
+      pathRangeBySpeed: true                  # 是否按速度调整路径长度。
+      pathCropByGoal: true                    # 是否按当前目标点裁剪候选路径。
+      usePathHysteresis: false                # 是否启用路径选择滞回，减少左右频繁切换。
+      pathHysteresisScoreRatio: 0.85          # 旧路径得分达到最优得分该比例时继续使用旧路径。
+      autonomyMode: true                      # 是否启用自主速度模式。
+      joyToSpeedDelay: 2.0                    # 手柄速度接管延迟，单位 s。
+      joyToCheckObstacleDelay: 5.0            # 手柄障碍检查开关接管延迟，单位 s。
+      goalClearRange: 0.5                     # 目标附近清障范围，单位 m。
+      goalX: 0.0                              # localPlanner 内部兜底目标 X。
+      goalY: 0.0                              # localPlanner 内部兜底目标 Y。
+
+  pathFollower:
+    ros__parameters:
+      sensorOffsetX: 0.0                      # 传感器相对车辆中心 X 偏移，单位 m。
+      sensorOffsetY: 0.0                      # 传感器相对车辆中心 Y 偏移，单位 m。
+      pubSkipNum: 1                           # 控制指令发布跳帧间隔。
+      twoWayDrive: false                      # 是否允许前进/倒退双向跟踪。
+      lookAheadDis: 0.5                       # pathFollower 前视距离，单位 m。
+      yawRateGain: 3.0                        # 航向误差角速度增益。
+      stopYawRateGain: 3.0                    # 停车时航向修正角速度增益。
+      switchTimeThre: 1.0                     # 双向行驶切换时间阈值，单位 s。
+      dirDiffThre: 0.2                        # 方向切换角度差阈值，单位 rad。
+      stopDisThre: 0.1                       # 到达停止距离阈值，单位 m。
+      slowDwnDisThre: 0.85                    # 接近目标开始减速的距离，单位 m。
+      useInclRateToSlow: false                # 是否按姿态角速度触发减速。
+      inclRateThre: 120.0                     # 姿态角速度减速阈值，单位 deg/s。
+      slowRate1: 0.25                         # 第一阶段减速比例。
+      slowRate2: 0.5                          # 第二阶段减速比例。
+      slowTime1: 2.0                          # 第一阶段减速持续时间，单位 s。
+      slowTime2: 2.0                          # 第二阶段减速持续时间，单位 s。
+      useInclToStop: false                    # 是否按车体倾角触发停车。
+      inclThre: 45.0                          # 倾角停车阈值，单位 deg。
+      stopTime: 5.0                           # 倾角触发后的停车持续时间，单位 s。
+      noRotAtStop: false                      # 停车时是否禁止旋转。
+      noRotAtGoal: true                       # 到达目标时是否禁止旋转。
+      autonomyMode: true                      # pathFollower 是否使用自主速度模式。
+      joyToSpeedDelay: 2.0                    # 手柄速度接管延迟，单位 s。
+      enableLateralVelocity: false             # 是否启用 base_link y 方向速度，适配全向/四足底盘。
+      lateralVelocityDirDiffThre: 0.2         # 航向误差超过该值时先原地转向，单位 rad。
+
+kinematic_models:
+  original:
+    linear_speed: 0.8                         # 统一线速度，展开为 localPlanner/pathFollower 速度，并同步到 path_to_waypoint.cruise_speed，单位 m/s。
+    max_yaw_rate: 0.872665                    # pathFollower 最大 yaw 角速度，单位 rad/s。
+    max_accel: 0.4                            # pathFollower 最大线加速度，单位 m/s^2。
+    max_lateral_speed: 0.0                    # y 方向速度上限；0 表示沿用 maxSpeed。
+    max_lateral_accel: 0.0                    # y 方向加速度上限；0 表示沿用 maxAccel。
+    cmu_cmd_to_cmd_vel:
+      ros__parameters:
+        enable_vehicle_cmd_filter: false      # 原本模型不过滤横向速度和原地旋转。
+        min_turning_radius: 0.0
+        min_turning_linear_speed: 0.0
+        allow_in_place_rotation: true
+
+    pathFollower:
+      ros__parameters:
+        enableLateralVelocity: true           # 原本全向/四足风格允许 base_link y 方向速度。
+
+  vehicle:
+    linear_speed: 1.0                         # 统一线速度，展开为 localPlanner/pathFollower 速度，并同步到 path_to_waypoint.cruise_speed，单位 m/s。
+    max_yaw_rate: 1.0                         # pathFollower 最大 yaw 角速度，单位 rad/s。
+    max_accel: 0.4                            # pathFollower 最大线加速度，单位 m/s^2。
+    max_lateral_speed: 0.0                    # y 方向速度上限；vehicle 关闭横向速度时该值不生效。
+    max_lateral_accel: 0.0                    # y 方向加速度上限；vehicle 关闭横向速度时该值不生效。
+    cmu_cmd_to_cmd_vel:
+      ros__parameters:
+        enable_vehicle_cmd_filter: true       # 车型模型只保留 v_x 和 w_z，并施加回转半径约束。
+        min_turning_radius: 0.1               # 最小回转半径，约束 |v_x| / |w_z| >= 1m。
+        min_turning_linear_speed: 0.2         # 转弯时的前进速度地板，避免降速后 w_z 被同步压到 0。
+        allow_in_place_rotation: false        # false：禁止原地转向；速度地板为 0 时才把低速转向 w_z 置 0。
+
+    pathFollower:
+      ros__parameters:
+        enableLateralVelocity: false          # 车型模型关闭横向速度，只输出 base_link x 线速度。
+
+real:
+  cmu_cmd_to_cmd_vel:
+    ros__parameters:
+      enable_odom_watchdog: true              # 真机开启里程计 watchdog，异常时停车。
+      odom_topic: "/Odometry"                 # watchdog 直接看定位原始里程计。
+
+sim:
+  cmu_cmd_to_cmd_vel:
+    ros__parameters:
+      enable_odom_watchdog: false             # 仿真默认关闭里程计 watchdog。
+      odom_topic: "/state_estimation"         # 仿真中使用 CMU 适配后的里程计。
+
+replan:
+  ros__parameters:
+    enable_replan: false                   # false = 纯 CMU，不加重规划
+    use_radius: 0.4                      # 卡死判定半径 (m)：位置持续在该半径内视为没动
+    use_time: 3.0                           # 卡死判定时长 (s)：保持不动超过该时长 → 判定 CMU 无法求解，调重规划
+    # ---- 话题（launch 会用 nav_main 传入的 odom/path 覆盖前两项）----
+    path_topic: "/global_path"
+    odom_topic: "/Odometry"
+    replan_service: "/replan_plan"        # 与 global_prm.yaml 的 replan_service 一致
+    obstacle_cloud_topic: "/front/lidar_points"   # 障碍点云（传感器帧，自动 TF 到 map）
+    cloud_target_frame: "map"
+    # ---- 触发通道（与 local_replan 相同；触发逻辑本身是卡死，见上）----
+    replan_mode: "service"                # service = 走上面的服务；goal = 重发原终点触发对方规划器（与无服务的全局算法解耦）
+    goal_topic: "/goal_pose"              # goal 模式：重发原终点的 PoseStamped 话题
+    replan_response_timeout: 2.0          # goal 模式：发出终点后等待新 /global_path 的超时 (s)
+    # ---- 触发细节 ----
+    replan_check_rate: 10.0               # 卡死检测频率 (Hz)
+    replan_interval_s: 0.2                # 两次重规划请求的最小间隔 (s)
+    goal_tolerance: 0.5                   # 距终点小于该值时停车不算卡死
+    floor_z_tolerance: 0.8
+    # ---- 障碍点云过滤（与 local_replan 相同的管线）----
+    obstacle_perception_radius: 10.0      # 感知半径 (m)
+    obstacle_sparse_distance: 0.15        # 栅格化降采样间距 (m)
+    obstacle_z_min: -0.1                  # 兜底 Z 带（相对机器人高度）：无分楼层配置时才用；正常启动 launch 会把
+    obstacle_z_max: 1.2                   #   local_replan.yaml maps.<map_name>.floors 展开进来，按层覆盖
+    # ---- 障碍累积入图（与 local_replan 相同：不等触发直接写图）----
+    obstacle_ingest_rate: 2.0               # 入图频率 (Hz)：过滤后的点云持续写入全局地图，不触发重规划
+    obstacle_decay_sec: 8.0                 # 障碍记忆时长 (s)：太长会绕已消失的障碍，太短累积不住
+    cloud_step: 3                         # 采样跳步
+    replan_debug: false                   # 打印锚定/保持时长等状态（刷屏，排障时才开）；关键事件已由 [触发重规划]/[重规划情况] 标签行覆盖
+    replan_debug_period: 1.0              # 状态行日志节流周期 (s)，同 local_replan

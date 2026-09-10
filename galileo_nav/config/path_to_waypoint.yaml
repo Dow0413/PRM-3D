@@ -1,0 +1,57 @@
+# galileo_nav/path_to_waypoint.launch.py 使用的全局 Path -> 当前 waypoint 桥接参数。
+#
+# 该文件单独维护 /global_path + odom -> /way_point 的路径投影、前视
+# waypoint、循环跟踪、终点调姿和任务清理参数。local_cmu/nav_main 会
+# include 同一个 launch；也可以独立启动该节点做 bag/offline 检查。
+
+kinematic_model: "original"                   # 默认运动学模型；可用 kinematic_model:=vehicle 覆盖。
+
+common:
+  path_to_waypoint:
+    ros__parameters:
+      input_path_topic: "/global_path"        # 输入全局路径话题，由全局规划器发布。
+      odom_topic: "/state_estimation"         # 当前定位/里程计话题。
+      output_waypoint_topic: "/way_point"     # 输出给下游局部规划器的当前前视目标点。
+      output_speed_topic: "/speed"            # 输出给下游局部规划器/pathFollower 的速度提示。
+      output_progress_topic: "/odom_current_progress" # 当前 odom 投影到 /global_path 的点。
+      publish_speed: true                     # 是否随 /way_point 一起发布 /speed。
+      cruise_speed: 1.0                       # /speed 巡航速度提示，单位 m/s；经 local_cmu/nav_main 启动时由 local_cmu.yaml 的 linear_speed 覆盖。
+      publish_rate: 10.0                      # waypoint 桥接发布频率，单位 Hz。
+      lookahead_distance: 1.0                 # 沿全局路径取目标点的前视距离，单位 m。
+      min_waypoint_distance: 0.8              # 当前 /way_point 到机器人 XY 直线距离下限，避免拐角处局部目标过近。
+      goal_tolerance: 0.1                     # 路径终点到达距离阈值，单位 m。
+      goal_distance_mode: "3d"                # 终点到达判定距离模式：3d 或 xy。
+      projection_distance_mode: "3d"          # 当前位姿到 Path 线段投影的距离模式：3d 或 xy。
+      projection_search_distance: 3.0         # 当前路径弧长进度前后参与投影搜索的距离窗口，单位 m；0 表示全路径搜索。
+      min_path_points: 2                      # 少于该点数的 Path 会被忽略。
+      start_from_nearest: true                # 新路径从机器人最近的路径点开始跟踪。
+      loop_mode: "none"                       # 路径循环模式： none/closed/pingpong。
+      max_laps: 0                             # 最大循环次数；0 表示循环模式下不限次数。
+      loop_pause_sec: 0.0                     # 每圈结束后的暂停时间，单位 s。
+      accept_repeated_path: true              # 相同 Path 重复到达时也重置跟踪进度。
+      align_final_orientation: true           # 到达终点位置后按 Path 最后一帧姿态原地调 yaw。
+      final_orientation_tolerance: 0.05       # 终点 yaw 对齐容差，单位 rad。
+      final_orientation_hold_sec: 0.3         # yaw 进入容差后保持多久才完成，单位 s。
+      final_orientation_timeout_sec: 8.0      # 终点 yaw 对齐最长时间，单位 s。
+      final_orientation_kp: 1.5               # 终点 yaw 对齐比例增益。
+      final_orientation_min_yaw_rate: 0.0     # 终点 yaw 最小角速度；0 表示不做死区补偿。
+      final_orientation_max_yaw_rate: 0.5     # 终点 yaw 最大角速度，单位 rad/s。
+      final_orientation_cmd_vel_topic: "/cmd_vel/final_align" # 终点调姿速度通道，由 cmd_vel_mux 优先仲裁。
+      clear_on_goal: true                     # 单次任务完成后清除 active path。
+      clear_global_path_topic: "/global_path" # 完成后发布空 Path，清掉显示和下游缓存。
+      reset_waypoint_to_robot_on_goal: false  # 不用当前位置覆盖 /way_point，避免残留假目标。
+      cleanup_stop_topic: "/stop"             # 完成清理时发布停止状态的话题。
+      cleanup_stop_value: 2                   # 停止值；2 表示线速度和角速度都停止。
+      cleanup_cmd_vel_topic: "/cmd_vel/final_align" # 清理零速度通道，确保 mux 优先停车。
+      cleanup_publish_count: 5                # 清理输出连续发布次数，按 publish_rate 定时。
+
+kinematic_models:
+  original:
+    path_to_waypoint:
+      ros__parameters:
+        align_final_orientation: true
+
+  vehicle:
+    path_to_waypoint:
+      ros__parameters:
+        align_final_orientation: false        # 车型模型不做原地 yaw 对齐。

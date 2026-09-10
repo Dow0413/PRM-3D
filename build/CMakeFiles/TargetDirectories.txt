@@ -1,5 +1,0 @@
-/home/dow/DOW/PRM-3D/build/CMakeFiles/PRMMAP.dir
-/home/dow/DOW/PRM-3D/build/CMakeFiles/testMultiFloor.dir
-/home/dow/DOW/PRM-3D/build/CMakeFiles/sim2d.dir
-/home/dow/DOW/PRM-3D/build/CMakeFiles/edit_cache.dir
-/home/dow/DOW/PRM-3D/build/CMakeFiles/rebuild_cache.dir

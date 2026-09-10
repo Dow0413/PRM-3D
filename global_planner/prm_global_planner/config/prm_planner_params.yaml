@@ -1,0 +1,82 @@
+# Default parameters for prm_planner_node (PRM-3D global planner).
+# The nav-stack-owned copy lives in galileo_nav/config/global_prm.yaml; this file is
+# only a fallback used by prm_global_planner's standalone launch.
+#
+# See galileo_nav/config/global_prm.yaml for the full explanation of each field.
+prm_planner_node:
+  ros__parameters:
+
+    # ---- I/O & behaviour ----
+    frame_id: "map"
+    output_path_topic: "/global_path"
+    odom_topic: "/Odometry"
+    goal_topic: "/goal_pose"
+    clicked_point_topic: "/clicked_point"
+    start_from_odom: true
+    path_height_offset: 0.0
+
+    floors:
+      - index: 0
+        ground_z: 0.3
+        z_min: -0.1
+        z_max: 0.7
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_1.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_1.npy
+      - index: 1
+        ground_z: 1.5
+        z_min: -0.1
+        z_max: 3.1
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_2.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_2.npy
+      - index: 2
+        ground_z: 3.2
+        z_min: 2.9
+        z_max: 3.5
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_3.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_3.npy
+      - index: 3
+        ground_z: 4.55
+        z_min: 2.9
+        z_max: 6.2
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_4.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_4.npy
+      - index: 4
+        ground_z: 6.2
+        z_min: 5.9
+        z_max: 6.6
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_5.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_5.npy
+      - index: 5
+        ground_z: 5.4
+        z_min: 4.3
+        z_max: 6.6
+        map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_6.png
+        elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_6.npy
+
+    connections_json: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/connections.json
+
+    z_source: npy
+
+    map_resolution: 0.05
+    map_origin_x: -8.0
+    map_origin_y: -8.5
+    flip_y: true
+
+    # ---- 3D map for path Z (see galileo_nav/config/global_prm.yaml) ----
+    pcd_map_path: "/home/dow/maps/gazebo_sim/three_floor_re.pcd"
+    pcd_search_radius: 0.2
+
+    # ---- PRM-3D parameters ----
+    expansion_radius: 4.0
+    prm_k_nodes: 500
+    prm_r_nei: 25.0
+    fuse_k_neighbors: 10
+    fuse_cross_radius: 8.0
+
+    # 贴墙惩罚：见 galileo_nav/config/global_prm.yaml
+    wall_penalty_gain: 0.0
+    wall_penalty_clearance_px: 10.0
+
+    # ---- path Z post-processing (see galileo_nav/config/global_prm.yaml) ----
+    z_median_filter_window: 7
+    z_max_slope: 1.5

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>prm_global_planner</name>
+  <version>0.1.0</version>
+  <description>
+    PRM-3D multi-floor global planner. Loads per-floor 2D maps + a connections.json
+    (topological union polygons), builds a fused multi-floor PRM roadmap offline, then
+    plans from odometry to /goal_pose and publishes nav_msgs/Path to /global_path.
+    Metric (x,y,z) is mapped to (pixel, floor_id) via a configurable resolution/origin
+    and per-floor Z ranges.
+  </description>
+  <maintainer email="dow@todo.todo">dow</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>prm_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_sensor_msgs</depend>
+
+  <depend>libopencv-dev</depend>
+  <depend>nlohmann-json3-dev</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

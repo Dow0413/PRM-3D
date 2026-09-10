@@ -1,0 +1,133 @@
+wzh_replan:
+  ros__parameters:
+    # ---- 监控输入/输出 ----
+    path_topic: "/global_path"          # 全局路径（只读，用于前视碰撞检测的进度投影）
+    odom_topic: "/Odometry"             # 定位里程计（楼层判定 + 起点位姿）
+    replan_service: "/replan_plan"      # 全局规划服务：start+goal+障碍点云 -> 新路径
+    replan_mode: "service"              # service | goal（重发原终点触发对方规划器）
+    goal_topic: "/goal_pose"            # goal 模式的终点话题
+    replan_response_timeout: 2.0        # goal 模式：等待新 /global_path 超时 (s)
+
+    # ---- 障碍点云 ----
+    obstacle_cloud_topic: "/front/rslidar_points"   # 障碍点云（传感器帧自动 TF 到 map）
+    cloud_target_frame: "map"
+    cloud_step: 1                       # 采样跳步：每 N 个点取 1 个
+    obstacle_sparse_distance: 0.01      # 栅格化降采样间距 (m)
+    obstacle_perception_radius: 15.0    # 感知半径 (m)
+
+    # ---- 碰撞检测 / 触发 ----
+    replan_check_rate: 20.0             # 碰撞检测后台线程频率 (Hz)
+    replan_lookahead_m: 6.0             # 前视检测距离 (m)：wzh 只管路径级被挡，近场绕行归 CMU
+    replan_consecutive_frames: 1
+    replan_interval_s: 0.1
+    robot_radius: 0.5                   # 禁行距离 (m)：路径点到最近障碍点小于此值 -> 重规划
+
+    # ---- 障碍持续入图（不等触发，直接写进全局地图）----
+    obstacle_ingest_rate: 10.0          # 入图频率 (Hz)
+    obstacle_decay_sec: 5.0             # 入图记忆时长 (s)
+
+    # ---- 进度投影 / 终点判定（监控内部用；到达终点后监控自动休眠）----
+    floor_z_tolerance: 0.8              # 前视 waypoint 的同层判定容差 (m) + 终点 Z 容差
+    goal_tolerance: 0.3                 # 终点 XY 容差 (m)
+    backtrack_window: 2.0
+    window_ahead: 8.0
+    control_rate: 20.0                  # 基类定时器频率（wzh 下只驱动终点判定）
+
+    # ---- 日志 ----
+    replan_debug: true
+    replan_debug_period: 1.0
+
+    # ---- 当前环境（nav_main 会 thread map_name 进来）----
+    map_name: "galileo_all"
+
+maps:
+  galileo_all:
+    floors:
+      - index: 0
+        png: "floor_0"
+        z_min: -1.195
+        z_max: 0.3
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 1
+        png: "floor_1"
+        z_min: -1.195
+        z_max: 0.405
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 2
+        png: "floor_2"
+        z_min: -1.145
+        z_max: 2.505
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 3
+        png: "floor_3"
+        z_min: 0.505
+        z_max: 4.455
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 4
+        png: "floor_4"
+        z_min: 2.705
+        z_max: 7.955
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 5
+        png: "floor_5"
+        z_min: 5.555
+        z_max: 8.255
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 6
+        png: "floor_6"
+        z_min: 6.455
+        z_max: 10.355
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 7
+        png: "floor_7"
+        z_min: 9.555
+        z_max: 11.305
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 8
+        png: "floor_8"
+        z_min: 9.155
+        z_max: 13.755
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 9
+        png: "floor_9"
+        z_min: 12.005
+        z_max: 15.005
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5
+      - index: 10
+        png: "floor_10"
+        z_min: 13.705
+        z_max: 18.792
+        enable_replan: true
+        local_way: replan
+        obstacle_z_min: -0.1
+        obstacle_z_max: 0.5

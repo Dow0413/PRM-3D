@@ -1,0 +1,11 @@
+bool success
+string message
+int32 topo_node_id
+float64 x
+float64 y
+float64 z
+string node_type
+float64 distance
+
+---
+

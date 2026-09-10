@@ -1,0 +1,14 @@
+# 动态避障重规划服务（local_replan -> prm_planner_node，safeplanner-2 架构）。
+# 局部端完成感知（Z 带过滤 + 感知半径 + 栅格降采样，map 帧），把
+# 「起点 + 原终点 + 全局坐标系障碍点云」原子地打包成一次请求；
+# 全局端 updateDynamicObstacles 入图膨胀 + 受影响边重算/切边后搜索，
+# 同步返回新路径（并同时发布 /global_path 供 RViz）。
+geometry_msgs/PoseStamped start       # 机器人当前位姿（map 帧，含 Z 定楼层）
+geometry_msgs/PoseStamped goal        # 原终点（未被障碍影响的任务目标）
+sensor_msgs/PointCloud2 obstacles     # 过滤+降采样后的动态障碍点（map 帧）
+bool ingest_only                      # true = 仅入图累积障碍，不规划不发布（cmu_replan 持续入图用）；缺省 false = 完整重规划（local_replan 行为不变）
+float64 decay_sec                     # 本批点的记忆时长 (s)：>0 用该值（cmu 短记忆），<=0 用服务端 obstacle_decay_sec
+---
+nav_msgs/Path path                    # 新路径（success 时非空，同 /global_path）
+bool success                          # false = 各级间距均无路（局部端应停车保持）
+float64 cost                          # 路径代价（失败时无意义）

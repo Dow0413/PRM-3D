@@ -1,0 +1,196 @@
+# local_replan 局部规划器：纯追踪 + 动态障碍重规划（safeplanner-2 架构局部端）。
+#
+# 该节点做两件事：
+#   1. 轨迹跟踪：/global_path + odom -> /cmd_vel（逻辑同 path_follower，3D 进度/终点判定）。
+#   2. 碰撞检测 + 重规划请求：20Hz 后台线程订阅障碍点云，按机器人当前楼层
+#     （由 Z 带判定）选用该层 PNG 的参数：
+#        - 该层自己的 obstacle_z_min/max 过滤地板/天花板；
+#        - 该层自己的 enable_replan 开关（楼梯层可单独关闭）；
+#      点云处理 = 采样跳步 + 高度带 + 感知半径过滤 + 栅格化降采样（哈希表记
+#      占据网格）+ cKDTree 局部障碍物 KD 树；对 lookahead 内的每个未来
+#      waypoint 查最近障碍物，距离平方 < 禁行距离平方（robot_radius）判定
+#      挡路，去抖后调用全局规划服务 ReplanPlan（起点=当前位姿，终点=原终点，
+#      障碍点云随请求原子送达）。成功换路径恢复追踪；失败（障碍封死所有通道）
+#      停车保持并持续重试，障碍过期/挪走后自动恢复。
+#
+# maps: 下按环境（map_name 选择）分组，每个环境内 floors: 列出该环境的所有楼层 PNG，
+# z_min/z_max 与 global_prm.yaml 的 floors[] 保持一致（机器人 Z 落在哪层就用哪层参数）。
+# 启动时 local_replan.launch.py 会把选中环境的 floors 展开成数组参数传给节点。
+# （wzh 局部规划器的楼层标签 local_way 在 local_wzh.yaml，本文件不管 wzh。）
+
+local_replan:
+  ros__parameters:
+    # ---- 追踪（同 path_follower）----
+    path_topic: "/global_path"
+    odom_topic: "/Odometry"
+    cmd_topic: "/cmd_vel"
+    lookahead_distance: 0.5
+    max_linear_velocity: 0.8
+    max_angular_velocity: 0.8
+    goal_tolerance: 0.3
+    floor_z_tolerance: 0.8
+    slow_radius: 1.0
+    rotate_cutoff_rad: 0.7
+    backtrack_window: 2.0
+    window_ahead: 8.0
+    control_rate: 20.0
+
+    # ---- 重规划触发公共参数（各楼层共用；分楼层的在 maps.<env>.floors 里）----
+    replan_service: "/replan_plan"             # 全局规划服务：start+goal+障碍点云 -> 新路径
+    replan_mode: "service"                     # service = 走上面的服务（默认，障碍随请求送达+失败反馈）；goal = 重发原终点触发对方规划器（与无服务的全局算法解耦）
+    goal_topic: "/goal_pose"                   # goal 模式：重发原终点的 PoseStamped 话题（PRM 全局端默认也是 /goal_pose，可对着自家栈直接测）
+    replan_response_timeout: 2.0               # goal 模式：发出终点后等待新 /global_path 的超时 (s)，超时/新路径与旧相同 → 按失败停车保持
+    obstacle_cloud_topic: "/front/rslidar_points"   # 障碍点云：雷达原始点云（传感器帧，自动 TF 到 map）
+    cloud_target_frame: "map"        # 点云帧不是 map 时自动 TF 变换到该帧（雷达帧点云必需）
+    replan_check_rate: 20.0         # 碰撞检测后台线程频率 (Hz)
+    replan_lookahead_m: 6.0                    # 前视检测距离：调大可更早触发重规划，给绕行留反应时间
+    replan_consecutive_frames: 1
+    replan_interval_s: 0.1
+    robot_radius: 0.5                          # 禁行距离 (m)：路径点到最近障碍点的距离小于此值 → 重规划
+    obstacle_perception_radius: 15.0          # 感知半径 (m)
+    obstacle_sparse_distance: 0.05            # 栅格化降采样间距 (m)
+    # ---- 障碍持续入图（与 cmu_replan 相同：不等触发，直接写进全局地图）----
+    obstacle_ingest_rate: 10.0               # 入图频率 (Hz)：过滤后的障碍点云持续写入全局地图，不触发重规划
+    obstacle_decay_sec: 5.0                   # 入图记忆时长 (s)：太长会绕已消失的障碍，太短累积不住
+    cloud_step: 2                              # 采样跳步：每 N 个点取 1 个（20Hz 下可调大减 CPU）
+    replan_debug: false                        # 打印 楼层/waypoint数/过滤后点数/最近距离（刷屏，排障时才开）；关键事件已由 [触发重规划]/[重规划情况] 等标签行覆盖
+    replan_debug_period: 1.0                   # check 行日志节流周期 (s)：20Hz 全打每秒 20 行刷屏，默认 1 s 一条；WARN 级触发/成败日志不受限
+
+    # ---- 当前环境（nav_main 会 thread map_name 进来）----
+    map_name: "gazebo_sim"
+
+# 每个环境内按楼层 PNG 分参数。z_min/z_max 抄自 global_prm.yaml 的 floors[]
+# （换环境时两处一起改）。obstacle_z_min/max 是「相对机器人高度」，用于排除
+# 该层的地板/天花板 —— 每层的天花板高度不同，所以按 PNG 分开。
+# enable_replan: false 的楼层（例如楼梯层）完全不触发重规划。
+maps:
+  gazebo_sim:
+    floors:
+      - index: 0
+        png: "gazebo_sim_1"
+        z_min: 0.375
+        z_max: 3.420
+        enable_replan: true
+        obstacle_z_min: 0.0
+        obstacle_z_max: 1.2
+      - index: 1
+        png: "gazebo_sim_2"
+        z_min: 3.4
+        z_max: 5.467
+        enable_replan: true
+        obstacle_z_min: 0.0
+        obstacle_z_max: 1.2
+      - index: 2
+        png: "gazebo_sim_3"
+        z_min: 5.4
+        z_max: 6.829
+        enable_replan: true
+        obstacle_z_min: 0.0
+        obstacle_z_max: 1.2
+
+  35_all:
+    floors:
+      - index: 0
+        png: "356_1"
+        z_min: -1.4
+        z_max: 0.2
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+      - index: 1
+        png: "356_2"
+        z_min: -1.4
+        z_max: 2.5
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+      - index: 2
+        png: "356_3"
+        z_min: 2.3
+        z_max: 2.5
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+      - index: 3
+        png: "356_4"
+        z_min: 2.3
+        z_max: 5.2
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+      - index: 4
+        png: "356_5"
+        z_min: 4.9
+        z_max: 6.4
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+      - index: 5
+        png: "356_6"
+        z_min: 6.15
+        z_max: 7.0
+        enable_replan: true
+        obstacle_z_min: -0.2
+        obstacle_z_max: 1.4
+
+  zjut:
+    floors:
+      - index: 0
+        png: "zjut_1"
+        z_min: -1.620
+        z_max: 0.2
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 1
+        png: "zjut_2"
+        z_min: -0.770
+        z_max: 3.897
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 2
+        png: "zjut_3"
+        z_min: 3.580
+        z_max: 5.197
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+
+  lx:
+    floors:
+      - index: 0
+        png: "lx_1"
+        z_min: 6.49
+        z_max: 7.17
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 1
+        png: "lx_2"
+        z_min: 2.82
+        z_max: 6.49
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 2
+        png: "lx_3"
+        z_min: 2.82
+        z_max: 3.58
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 3
+        png: "lx_4"
+        z_min: -0.08
+        z_max: 2.82
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2
+      - index: 4
+        png: "lx_5"
+        z_min: -1.0
+        z_max: -0.08
+        enable_replan: true
+        obstacle_z_min: -0.1
+        obstacle_z_max: 1.2

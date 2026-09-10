@@ -1,0 +1,6 @@
+string path_name        # name of a .json file (without extension) to follow
+int32[] topo_node_ids   # alternative: explicit sequence of topology node IDs to visit
+---
+bool success
+string message
+int32 num_waypoints

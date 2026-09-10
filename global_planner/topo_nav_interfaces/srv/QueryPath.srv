@@ -1,0 +1,8 @@
+int32 from_topo_id
+int32 to_topo_id
+
+---
+
+bool success
+string message
+geometry_msgs/Point[] path_points

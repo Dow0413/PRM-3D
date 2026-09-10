@@ -1,0 +1,353 @@
+# PRM-3D global planner configuration (single source of truth).
+#
+# This is the file the nav stack reads when you select the PRM global planner
+# (nav_main.launch.py global:=prm  /  pcd_nav_sim.launch.py route_source:=prm).
+#
+# The planner loads one PNG per floor, builds a fused multi-floor PRM roadmap
+# from connections.json (topological union polygons for the stairwells), and on
+# each /goal_pose plans from odometry to the goal across floors. Metric (x,y,z)
+# is converted to (pixel, floor_id): x/y via resolution+origin, floor_id via the
+# per-floor z_min/z_max below.
+#
+# Path Z comes from per-floor 2.5D elevation grids (floors[].elevation_npy
+# below, z_source: npy): each path point is a bilinear lookup in its floor's
+# grid. The grids are generated offline from the same PCD the 2D maps were
+# sliced from by process_multi_floor_elevations.py (per-cell ground Z over the
+# walkable pixels, stairwell bands widened toward the next floor, holes
+# interpolated, lightly smoothed) — no runtime PCD access, and each grid can
+# be inspected as an image before planning. Points a grid cannot answer fall
+# back to the direct PCD query (see "3D map for path Z" below), then to the
+# previous point's Z / the floor's ground_z.
+prm_planner_node:
+  ros__parameters:
+
+    # ---- I/O & behaviour ----
+    frame_id: "map"
+    output_path_topic: "/global_path"        # canonical global path contract
+    odom_topic: "/Odometry"                  # start source (start_from_odom mode)
+    goal_topic: "/goal_pose"                 # PoseStamped goal
+    clicked_point_topic: "/clicked_point"    # PointStamped (two-click mode)
+    start_from_odom: true                    # true: start = odom; false: two-click start/goal
+    path_height_offset: 0.1                  # z offset added to the published path (m); 机器人车体高度抬升
+
+    # floors:
+    #   - index: 0
+    #     z_min: 6.49
+    #     z_max: 7.17
+    #     map: "/home/dow/DOW/PRM-3D/expMap/lx_1.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/elevation_0.npy"
+    #   - index: 1
+    #     z_min: 2.82
+    #     z_max: 6.49
+    #     map: "/home/dow/DOW/PRM-3D/expMap/lx_2.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/elevation_1.npy"
+    #   - index: 2
+    #     z_min: 2.82
+    #     z_max: 3.58
+    #     map: "/home/dow/DOW/PRM-3D/expMap/lx_3.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/elevation_2.npy"
+    #   - index: 3
+    #     z_min: -0.08
+    #     z_max: 2.82
+    #     map: "/home/dow/DOW/PRM-3D/expMap/lx_4.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/elevation_3.npy"
+    #   - index: 4
+    #     z_min: -1.0
+    #     z_max: -0.08
+    #     map: "/home/dow/DOW/PRM-3D/expMap/lx_5.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/elevation_4.npy"
+    # floors:
+    #   - index: 0
+    #     z_min: -1.1
+    #     z_max: 0.16
+    #     map: "/home/dow/DOW/PRM-3D/expMap/r2_1.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/rig_0.npy"
+    #   - index: 1
+    #     z_min: 0.16
+    #     z_max: 3.51
+    #     map: "/home/dow/DOW/PRM-3D/expMap/r2_2.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/galileo_nav_stack/src/global_planner/prm_global_planner/npy/rig_1.npy"
+    
+    
+    # floors:
+    #   - index: 0
+    #     ground_z: -1.25
+    #     z_min: -1.4
+    #     z_max: 0.6
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_1.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_1.npy"
+    #   - index: 1
+    #     ground_z: 0.55            # NOTE: map 356_2 == 356_4 (same file); its
+    #     z_min: -1.4               # free area also sees levels -1.25/2.35, so
+    #     z_max: 2.5                # auto-estimate would pick the wrong one —
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_2.png"   # keep this override.
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_2.npy"
+    #   - index: 2
+    #     ground_z: 2.35
+    #     z_min: 2.3
+    #     z_max: 2.5
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_3.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_3.npy"
+    #   - index: 3
+    #     ground_z: 3.65
+    #     z_min: 2.3
+    #     z_max: 5.2
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_4.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_4.npy"
+    #   - index: 4
+    #     ground_z: 4.95
+    #     z_min: 4.9
+    #     z_max: 6.4
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_5.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_5.npy"
+    #   - index: 5
+    #     ground_z: 6.25
+    #     z_min: 6.15
+    #     z_max: 7.0
+    #     map: "/home/dow/DOW/PRM-3D/expMap/35_all/356_6.png"
+    #     elevation_npy: "/home/dow/DOW/PRM-3D/expMap/35_all_2/356_6.npy"
+
+    # connections_json: "/home/dow/DOW/PRM-3D/expMap/connections35_all.json"
+    # z_source: npy
+    # map_resolution: 0.05
+    # map_origin_x: -15.471000
+    # map_origin_y: -7.330000
+    # flip_y: true
+
+
+    # floors:
+    #   - index: 0
+    #     ground_z: 0.4
+    #     z_min: -0.05
+    #     z_max: 0.85
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_1.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_1.npy
+    #   - index: 1
+    #     ground_z: 1.48
+    #     z_min: -0.05
+    #     z_max: 3.0
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_2.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_2.npy
+    #   - index: 2
+    #     ground_z: 3.35
+    #     z_min: 2.9
+    #     z_max: 3.8
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_3.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_3.npy
+    #   - index: 3
+    #     ground_z: 4.5
+    #     z_min: 2.9
+    #     z_max: 6.1
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_4.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_4.npy
+    #   - index: 4
+    #     ground_z: 6.3
+    #     z_min: 5.9
+    #     z_max: 6.7
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_5.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_5.npy
+    #   - index: 5
+    #     ground_z: 5.27
+    #     z_min: 4.449999997019761
+    #     z_max: 6.100000000000006
+    #     map: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_6.png
+    #     elevation_npy: /home/dow/DOW/PRM-3D/expMap/gazebo_sim/gazebo_sim_6.npy
+
+    # connections_json: "/home/dow/DOW/PRM-3D/expMap/gazebo_sim/connections.json"
+    # z_source: npy
+    # map_resolution: 0.05
+    # map_origin_x: -8.0
+    # map_origin_y: -8.5
+    # flip_y: true
+
+    # floors:
+    # - index: 0
+    #   ground_z: 0.5
+    #   z_min: -2.48
+    #   z_max: 2.67
+    #   map: /home/dow/DOW/PRM-3D/expMap/galileo_out/map_1.png
+    #   elevation_npy: /home/dow/DOW/PRM-3D/expMap/galileo_out/map_1.npy
+    # - index: 1
+    #   ground_z: 0.5
+    #   z_min: 6.52
+    #   z_max: 14.17
+    #   map: /home/dow/DOW/PRM-3D/expMap/galileo_out/map_2.png
+    #   elevation_npy: /home/dow/DOW/PRM-3D/expMap/galileo_out/map_2.npy
+    # connections_json: "/home/dow/DOW/PRM-3D/expMap/galileo_out/connections.json"
+    # z_source: npy
+    # map_resolution: 0.05
+    # map_origin_x: -77.219299
+    # map_origin_y: -108.020569
+    # flip_y: true
+
+    floors:
+      - index: 0
+        ground_z: -0.47
+        z_min: -1.195
+        z_max: 0.3
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_0.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_0.npy
+      - index: 1
+        ground_z: -0.39
+        z_min: -1.195
+        z_max: 0.405
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_1.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_1.npy
+      - index: 2
+        ground_z: 0.68
+        z_min: -1.145
+        z_max: 2.505
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_2.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_2.npy
+      - index: 3
+        ground_z: 2.48
+        z_min: 0.505
+        z_max: 4.455
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_3.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_3.npy
+      - index: 4
+        ground_z: 5.33
+        z_min: 2.705
+        z_max: 7.955
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_4.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_4.npy
+      - index: 5
+        ground_z: 6.91
+        z_min: 5.555
+        z_max: 8.255
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_5.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_5.npy
+      - index: 6
+        ground_z: 8.71
+        z_min: 6.455
+        z_max: 10.355
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_6.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_6.npy
+      - index: 7
+        ground_z: 10.43
+        z_min: 9.555
+        z_max: 11.305
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_7.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_7.npy
+      - index: 8
+        ground_z: 11.46
+        z_min: 9.155
+        z_max: 13.755
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_8.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_8.npy
+      - index: 9
+        ground_z: 13.51
+        z_min: 12.005
+        z_max: 15.005
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_9.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_9.npy
+      - index: 10
+        ground_z: 16.25
+        z_min: 13.705
+        z_max: 18.792
+        map: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_10.png
+        elevation_npy: /home/dow/maps/gazebo_sim/gazebo_galileo_0907/floor_10.npy
+    connections_json: "/home/dow/maps/gazebo_sim/gazebo_galileo_0907/connections.json"
+    z_source: npy
+    map_resolution: 0.05
+    map_origin_x: -40.615631
+    map_origin_y: -40.222412
+    flip_y: true
+
+    # ---- 3D map for path Z (fallback + z_source: pcd) ----
+    pcd_map_path: "/home/dow/maps/gazebo_sim/galileo_0907.pcd"
+    pcd_search_radius: 0.2
+    pcd_ground_tol_below: 0.6       # anchor window below ground (m)
+    pcd_ground_tol_above: 0.9       # anchor window above ground (m)
+    pcd_z_cluster_tol: 0.15         # densest-Z-cluster width (m); 0 disables
+    pcd_z_quantile: 0.25            # quantile inside the cluster (0=min .. 1=max)
+
+
+    # ---- PRM-3D parameters ----
+    expansion_radius: 6.0                     # static obstacle inflation (px)
+    dynamic_inflation_px: 6.0                 # 动态障碍入图膨胀 (px)：markObstacle 直接写
+                                              # 本体+该值 的黑色圆盘，与静态黑区（膨胀
+                                              # expansion_radius）同待遇；重规划不重建膨胀+
+                                              # PRM采样，入图时一次膨胀到位。窄通道绕不过去
+                                              # (未找到路径)可单独调小。
+    prm_k_nodes: 10000                          # roadmap node count per floor
+    prm_r_nei: 25.0                           # neighbor radius (px)
+    fuse_k_neighbors: 10                      # online start/goal insertion K
+    fuse_cross_radius: 8.0                    # cross-floor edge distance threshold (px)
+
+    # ---- 贴墙惩罚（静态墙 + 动态障碍共用）----
+    # 同层边权重 = 欧氏距离 × (1 + gain × (1 - c/clearance_px))，c 为边上到最近
+    # (膨胀后)障碍的最小距离(px)。离墙越近权重越大，规划会自然远离墙走安全通道，
+    # 而非贴着墙求最短。gain=0 关闭。clearance_px 是像素（分辨率 0.05 时 10px=0.5m），
+    # 超过该距离的边不再惩罚。
+    # 静态墙：建图时(fuseGraph)烤进边权；动态障碍：planFused 搜索时实时计算同一
+    # 公式（c = 边到障碍圆盘边缘的间隙）。效果＝绕行路径离已知障碍约 0.5m 软间距，
+    # 窄通道仍可通行（只是变贵），压到圆盘本体的边才被切——禁行区不膨胀。
+    wall_penalty_gain: 2.0
+    wall_penalty_clearance_px: 10.0
+
+    # ---- path Z post-processing ----
+    # Elevation lookups can carry isolated outliers (stray PCD points, wrong
+    # z-band pixels). Two guards keep the published path navigable:
+    #   z_median_filter_window: sliding-window median on the per-point Z.
+    #     7 = the point plus 3 before/after; 0 disables.
+    #   z_max_slope: max |dz| per metre of horizontal travel. Remaining steps
+    #     (e.g. floor-band gaps at stairwells) become ramps instead of walls.
+    #     1.5 ≈ 56 deg, comfortably above normal stair pitch; 0 disables.
+    z_median_filter_window: 7
+    z_max_slope: 1.5
+
+    # ---- dynamic-obstacle replanning（safeplanner-2 服务架构）----
+    # 全局端是纯服务端：local_replan 在 20Hz 碰撞检测线程里过滤点云（Z 带 +
+    # 感知半径 + 栅格降采样 + cKDTree 最近查），触发后把「当前位姿起点 + 原
+    # 终点 + map 帧障碍点云」打包成一次 ReplanPlan 服务请求原子送达。本节点：
+    #   1) updateDynamicObstacles —— 点级入图：以每个点为圆心 mark 一个 forbid
+    #      半径（dynamic_inflation_px + obstacle_radius_m）的黑色圆盘（不拟合
+    #      圆盘：只扫到障碍物边角时圆心会放错，多点圆盘并成真实形状），障碍点
+    #      带记忆（obstacle_decay_sec），过期自动抹除；
+    #   2) planFused —— 受影响边重算：同层边到最近障碍点距离 < forbid 切边，
+    #      间隙 < forbid+safety 按贴墙公式加权；全间距无路时间距降级重试
+    #      （全 → 半 → 物理最小），仍无路返回 success=false（局部端停车保持）；
+    #   3) 成功发布 /global_path 并经服务响应返回新路径。
+    # 感知参数（Z 带/感知半径/稀疏化/禁行距离）全在 local_replan.yaml ——
+    # 障碍唯一来源是服务请求，不存在双源不同步。
+    enable_dynamic_replan: true
+    replan_service: "/replan_plan"            # 重规划服务名（与 local_replan.yaml 一致）
+    replan_check_rate: 1.0                    # 障碍过期检查频率 (Hz)
+    obstacle_cluster_tol: 0.1                # 点匹配距离 (m)：新点与老点近于此值 → 刷新记忆，否则新增
+    obstacle_radius_m: 0.0                    # 动态障碍额外膨胀 (m)：并入 forbid（本体+
+                                              # dynamic_inflation_px + 该值）
+    obstacle_decay_sec: 30.0                  # 障碍记忆时长：未再观测到多久后从地图抹除 (s)。
+                                              # 必须覆盖绕行耗时，否则转弯后障碍出视野就被
+                                              # "遗忘"，重规划又穿回原障碍处（2s 太短）
+    obstacle_elev_tol: 0.2                    # 入图高程校验 (m)：点 Z 与该层高度图 npy 在此
+                                              # 像素的地面高程差超过该值 → 天花板/别的楼层
+                                              # 结构（下楼梯扫到的楼下天花板差 ~2m），不入图。
+                                              # 仅 z_source=npy 的楼层生效；设负数关闭
+    replan_debug_window: true                 # safeplanner-2 风格调试窗口（随 launch 启动）：
+                                              # 当前楼层地图+全局路径(蓝)+障碍点云(黑)+
+                                              # 障碍圆盘(红)+机器人(绿)。
+                                              # 左键点击当前显示楼层的地图区域可直接指定
+                                              # 终点：窗口像素 -> map xy -> 指定楼层像素，
+                                              # 不需要输入 z，也不通过 z 区间反推楼层。
+                                              # 无 $DISPLAY 自动关闭；false 可关闭窗口
+
+# Pure-pursuit follower: /global_path + odom -> nav_vel Twist.
+# Used by prm_real_nav.launch.py (planning + velocity only, no simulation).
+# Progress matching and the goal check are 3D (Z weighted): overlapping floors
+# can never hijack tracking, and the goal only counts at the goal's height.
+path_follower:
+  ros__parameters:
+    path_topic: "/global_path"
+    odom_topic: "/Odometry"
+    cmd_topic: "/cmd_vel"
+    lookahead_distance: 0.5
+    max_linear_velocity: 0.8
+    max_angular_velocity: 0.8
+    goal_tolerance: 0.3
+    floor_z_tolerance: 0.8          # goal height check; must stay below floor gap
+    slow_radius: 1.0
+    rotate_cutoff_rad: 0.7
+    backtrack_window: 2.0           # how far progress may regress along the arc (m)
+    window_ahead: 8.0               # forward search window along the arc (m)
+    control_rate: 20.0
